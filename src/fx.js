@@ -36,7 +36,7 @@ export class Particles {
     }
     const g = this.geo.attributes; g.position.needsUpdate = g.aCol.needsUpdate = g.aSize.needsUpdate = true;
   }
-  dust(x, y, z, n, sp, col = [0.78, 0.6, 0.4], a = 0.5) {
+  dust(x, y, z, n, sp, col = [0.45, 0.41, 0.36], a = 0.2) {
     for (let i = 0; i < n; i++) this.emit(x + (Math.random() - 0.5) * 0.5, y + 0.1, z + (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * sp, 0.4 + Math.random() * sp * 0.5, (Math.random() - 0.5) * sp, 0.6 + Math.random() * 0.7, 0.5 + Math.random() * 0.5, 2.5, col[0], col[1], col[2], a, -0.3, 2);
   }
   burst(x, y, z, n, sp, cols) {

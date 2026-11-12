@@ -1,12 +1,11 @@
 # Downhill Rush
 
-A third-person downhill mountain bike game for the browser. You ride one long mountain from the summit gate to the valley, choose between green, blue and black trails at three forks, and score with tricks. The game is one self-contained HTML page built on three.js, plus a small room server for multiplayer. Both run on one Cloudflare Worker.
+A third-person downhill mountain bike game for the browser. You ride one long mountain from the summit gate to the valley, choose between green, blue and black trails at three forks, and score with tricks. The game is one HTML page built on three.js with a folder of textures, plus a small room server for multiplayer. Both run on one Cloudflare Worker.
 
 ## Play
 
 https://downhill-rush.bo-29c.workers.dev
 
-Opening `docs/index.html` directly also works. Multiplayer then connects to the URL above.
 
 - **Ride Solo**: race the clock. Works offline.
 - **Create Race**: opens a room with a code, for example **PINE 42**. Share the code or use **Copy Link**. Up to 8 riders start on the same countdown. The rider who has been in the room longest starts and restarts the race.
@@ -44,6 +43,8 @@ npm run build
 ```
 
 This bundles `src/main.js` with three.js and inlines the result into `src/index.html`. The output is `docs/index.html`. `npm run watch` rebuilds on every change.
+
+The page loads its textures from `docs/tex`, so it must be served over HTTP. It does not run from a `file://` path.
 
 ## Run locally
 
@@ -92,6 +93,8 @@ npm run map
 | `src/physics.js` | Bike movement, jumps, landings, crashes |
 | `src/score.js` | Trick values, combos, medals |
 | `src/world.js` | The visible mountain: ground, forest, wood, water, signs, sky |
+| `src/pbr.js` | Shared material and texture loader |
+| `docs/tex/` | Ground, rock, bark, plank and foliage textures, cut from CC0 scans by [Poly Haven](https://polyhaven.com) |
 | `src/bike.js` | Rider and bike model with trick poses |
 | `src/camera.js` | Chase camera |
 | `src/input.js` | Keyboard, touch, controller |

@@ -1,9 +1,9 @@
-// The rider and the bike, built from smooth round shapes and posed every frame.
+// The rider and the bike at real proportions, posed every frame.
 // Limbs are solved from joint positions, so each trick is just a set of
 // targets for hands, feet, hips and chest.
 import * as THREE from 'three';
 import { clamp, sm } from './noise.js';
-import { toon } from './toon.js';
+import { pbr } from './pbr.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -19,7 +19,7 @@ export const OUTFITS = [
   { jersey: 0x2f7be0, helmet: 0xff4f4f, frame: 0xf2f2f2, pack: 0x1f3358, name: '#5a9cff' },
 ];
 
-const mat = (c, o = {}) => toon({ color: c, ...o });
+const mat = (c, o = {}) => pbr({ color: c, ...o });
 const ball = (r, m, sx = 1, sy = 1, sz = 1) => { const b = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12), m); b.scale.set(sx, sy, sz); b.castShadow = true; return b; };
 
 function tube(a, b, r, m) {
@@ -30,15 +30,15 @@ function tube(a, b, r, m) {
   return mesh;
 }
 
-// Fat tyres and a coloured rim with three chunky spokes.
+// Knobbly tyre, dark rim and thin spokes.
 function wheel(mTire, mRim) {
   const g = new THREE.Group();
-  const tire = new THREE.Mesh(new THREE.TorusGeometry(0.295, 0.075, 12, 30), mTire); tire.rotation.y = Math.PI / 2; g.add(tire);
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.225, 0.026, 8, 26), mRim); rim.rotation.y = Math.PI / 2; g.add(rim);
-  for (let i = 0; i < 3; i++) {
-    const s = new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.42, 3, 8), mRim); s.rotation.x = i * Math.PI / 3; g.add(s);
+  const tire = new THREE.Mesh(new THREE.TorusGeometry(0.335, 0.036, 10, 36), mTire); tire.rotation.y = Math.PI / 2; g.add(tire);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.298, 0.013, 6, 36), mRim); rim.rotation.y = Math.PI / 2; g.add(rim);
+  for (let i = 0; i < 8; i++) {
+    const s = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.59, 4), mRim); s.rotation.x = i * Math.PI / 8; g.add(s);
   }
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.12, 12), mRim); hub.rotation.z = Math.PI / 2; g.add(hub);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.12, 12), mRim); hub.rotation.z = Math.PI / 2; g.add(hub);
   return g;
 }
 
@@ -70,65 +70,66 @@ export class BikeModel {
   constructor(outfit) {
     const o = OUTFITS[outfit % OUTFITS.length];
     this.root = new THREE.Group();           // position + heading
-    this.root.scale.setScalar(1.2);          // a little larger than life
     this.pitchG = new THREE.Group(); this.pitchG.position.y = 0.9; this.root.add(this.pitchG);
     this.body = new THREE.Group(); this.body.position.y = -0.9; this.pitchG.add(this.body); // lean about the tyres
     this.bike = new THREE.Group(); this.body.add(this.bike);
-    const mFrame = mat(o.frame), mDark = mat(0x2a2d36), mTire = mat(0x25262c), mRim = mat(o.jersey), mFork = mat(0xf4f5f7);
+    const mFrame = mat(o.frame, { roughness: 0.35, metalness: 0.4 }), mDark = mat(0x17181b, { roughness: 0.6 }), mTire = mat(0x101012, { roughness: 1 }), mRim = mat(0x1c1d20, { roughness: 0.4, metalness: 0.6 }), mFork = mat(0x18191c, { roughness: 0.3, metalness: 0.7 });
     const B = this.bike, add = m => { m.castShadow = true; B.add(m); return m; };
     const bb = V(0, 0.34, 0.1), seatTop = V(0, 0.9, 0.3), headT = V(0, 0.98, -0.4), headB = V(0, 0.82, -0.45), rearAx = V(0, 0.36, 0.6);
-    add(tube(bb, seatTop, 0.042, mFrame)); add(tube(bb, headB, 0.062, mFrame)); add(tube(V(0, 0.8, 0.26), headT, 0.05, mFrame));
-    add(tube(headB, headT, 0.058, mFrame));
-    for (const sx of [-1, 1]) { add(tube(bb, V(sx * 0.08, 0.36, 0.6), 0.03, mFrame)); add(tube(V(0, 0.74, 0.27), V(sx * 0.08, 0.36, 0.6), 0.027, mFrame)); }
-    add(tube(V(0, 0.56, 0.18), V(0, 0.72, 0.02), 0.035, mat(0xffd23c))); // shock
-    const seat = add(ball(1, mDark, 0.095, 0.04, 0.18)); seat.position.set(0, 0.94, 0.33);
+    add(tube(bb, seatTop, 0.024, mFrame)); add(tube(bb, headB, 0.036, mFrame)); add(tube(V(0, 0.8, 0.26), headT, 0.028, mFrame));
+    add(tube(headB, headT, 0.034, mFrame));
+    for (const sx of [-1, 1]) { add(tube(bb, V(sx * 0.08, 0.36, 0.6), 0.016, mFrame)); add(tube(V(0, 0.74, 0.27), V(sx * 0.08, 0.36, 0.6), 0.013, mFrame)); }
+    add(tube(V(0, 0.56, 0.18), V(0, 0.72, 0.02), 0.022, mat(0xd9a520, { roughness: 0.4, metalness: 0.5 }))); // shock
+    const seat = add(ball(1, mDark, 0.07, 0.03, 0.14)); seat.position.set(0, 0.94, 0.33);
     this.rear = wheel(mTire, mRim); this.rear.position.copy(rearAx); B.add(this.rear);
     // Steering assembly: fork, front wheel and bars turn around the head tube.
     this.steerG = new THREE.Group(); this.steerG.position.copy(headT); B.add(this.steerG);
     this.steerAxis = headT.clone().sub(headB).normalize();
     const S = this.steerG, sadd = m => { m.castShadow = true; S.add(m); return m; };
     const fa = V(0, 0.36, -0.6).sub(headT);
-    for (const sx of [-1, 1]) sadd(tube(V(sx * 0.085, -0.14, -0.04), V(sx * 0.085, fa.y, fa.z), 0.034, mFork));
-    sadd(tube(V(-0.1, -0.14, -0.04), V(0.1, -0.14, -0.04), 0.038, mFork));
-    sadd(tube(V(0, 0, 0), V(0, 0.08, -0.02), 0.035, mDark));
-    sadd(tube(V(-0.39, 0.1, 0), V(0.39, 0.1, 0), 0.024, mDark));
-    for (const sx of [-1, 1]) sadd(tube(V(sx * 0.29, 0.1, 0), V(sx * 0.41, 0.1, 0), 0.034, mat(o.jersey)));
+    for (const sx of [-1, 1]) sadd(tube(V(sx * 0.085, -0.14, -0.04), V(sx * 0.085, fa.y, fa.z), 0.021, mFork));
+    sadd(tube(V(-0.1, -0.14, -0.04), V(0.1, -0.14, -0.04), 0.024, mFork));
+    sadd(tube(V(0, 0, 0), V(0, 0.08, -0.02), 0.022, mDark));
+    sadd(tube(V(-0.39, 0.1, 0), V(0.39, 0.1, 0), 0.014, mDark));
+    for (const sx of [-1, 1]) sadd(tube(V(sx * 0.29, 0.1, 0), V(sx * 0.41, 0.1, 0), 0.019, mDark));
     this.front = wheel(mTire, mRim); this.front.position.copy(fa); S.add(this.front);
     this.gripL = V(-0.35, 0.1, 0); this.gripR = V(0.35, 0.1, 0);
     // Cranks and pedals.
     this.crankG = new THREE.Group(); this.crankG.position.copy(bb); B.add(this.crankG);
     for (const sx of [-1, 1]) {
-      const c = tube(V(sx * 0.07, 0, 0), V(sx * 0.07, 0, -sx * 0.17), 0.022, mFork); this.crankG.add(c);
+      const c = tube(V(sx * 0.07, 0, 0), V(sx * 0.07, 0, -sx * 0.17), 0.014, mFork); this.crankG.add(c);
       const p = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.03, 0.09), mDark); p.position.set(sx * 0.14, 0, -sx * 0.17); this.crankG.add(p);
     }
     const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.02, 16), mDark); ring.rotation.z = Math.PI / 2; ring.position.x = 0.05; this.crankG.add(ring);
     this.pedL = V(-0.14, 0, 0.17); this.pedR = V(0.14, 0, -0.17);
 
-    // Rider: round and chunky, with a big helmet, big gloves and big shoes.
+    // Rider in a full-face helmet, goggles, gloves, knee pads and a pack.
     const R = this.rider = new THREE.Group(); this.body.add(R);
-    const mJ = mat(o.jersey), mShort = mat(0x2f3a5c), mSkin = mat(0xf6bd8f), mGlove = mat(0xfafafa), mShoe = mat(o.frame), mPad = mat(0x2a2d36), mHel = mat(o.helmet);
-    this.torso = new Bone(R, 0.21, mJ, 0.24);
-    this.chestM = ball(0.25, mJ, 1.16, 0.86, 0.95); R.add(this.chestM);
-    this.hipM = ball(0.22, mShort, 1.05, 0.9, 1); R.add(this.hipM);
-    this.headG = new THREE.Group(); R.add(this.headG);
+    const mJ = mat(o.jersey, { roughness: 0.95 }), mShort = mat(0x1d1f24, { roughness: 0.95 }), mSkin = mat(0xc4906c, { roughness: 0.7 }), mGlove = mat(0x18191c), mShoe = mat(0x1b1c1f), mPad = mat(0x141518), mHel = mat(o.helmet, { roughness: 0.25 });
+    this.torso = new Bone(R, 0.135, mJ, 0.165);
+    this.chestM = ball(0.17, mJ, 1.2, 0.85, 0.85); R.add(this.chestM);
+    this.hipM = ball(0.145, mShort, 1.15, 0.9, 1); R.add(this.hipM);
+    this.headG = new THREE.Group(); this.headG.scale.setScalar(0.6); R.add(this.headG);
     const face = ball(0.215, mSkin); face.position.set(0, -0.045, -0.035); this.headG.add(face);
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.275, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.6), mat(o.helmet, { side: THREE.DoubleSide }));
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.275, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.6), mat(o.helmet, { side: THREE.DoubleSide, roughness: 0.25 }));
     helmet.scale.set(1, 1, 1.1); helmet.rotation.x = 0.12; helmet.castShadow = true; this.headG.add(helmet);
     const peak = ball(0.17, mHel, 1.1, 0.16, 1); peak.position.set(0, 0.035, -0.3); peak.rotation.x = 0.2; this.headG.add(peak);
     const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.262, 0.035, 8, 20, Math.PI), mJ); stripe.rotation.set(0.12, Math.PI / 2, 0); stripe.scale.set(1.1, 1, 1); this.headG.add(stripe);
     const gog = ball(1, mPad, 0.2, 0.075, 0.07); gog.position.set(0, -0.03, -0.215); this.headG.add(gog);
-    for (const sx of [-1, 1]) { const lens = ball(1, mat(0x8fe3ff), 0.075, 0.05, 0.03); lens.position.set(sx * 0.085, -0.03, -0.265); this.headG.add(lens); }
+    for (const sx of [-1, 1]) { const lens = ball(1, mat(0x30383c, { roughness: 0.1, metalness: 0.8 }), 0.075, 0.05, 0.03); lens.position.set(sx * 0.085, -0.03, -0.265); this.headG.add(lens); }
     const strap = new THREE.Mesh(new THREE.TorusGeometry(0.222, 0.028, 8, 22), mPad); strap.rotation.x = Math.PI / 2; strap.position.y = -0.03; this.headG.add(strap);
-    this.pack = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.17, 6, 14), mat(o.pack)); this.pack.scale.set(1.2, 1, 0.75); this.pack.castShadow = true; R.add(this.pack);
-    this.arms = [0, 1].map(() => ({ up: new Bone(R, 0.085, mJ, 0.095), lo: new Bone(R, 0.07, mSkin, 0.08), hand: ball(0.118, mGlove), pad: ball(0.092, mJ), sh: ball(0.105, mJ) }));
+    const chin = ball(0.16, mHel, 1.05, 0.55, 1.05); chin.position.set(0, -0.15, -0.13); this.headG.add(chin);
+    const neck = ball(0.1, mSkin, 1, 1.4, 1); neck.position.set(0, -0.26, 0.05); this.headG.add(neck);
+    this.pack = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.16, 6, 14), mat(o.pack, { roughness: 0.95 })); this.pack.scale.set(1.2, 1, 0.6); this.pack.castShadow = true; R.add(this.pack);
+    this.arms = [0, 1].map(() => ({ up: new Bone(R, 0.048, mJ, 0.058), lo: new Bone(R, 0.036, mJ, 0.046), hand: ball(0.055, mGlove), pad: ball(0.05, mJ), sh: ball(0.07, mJ) }));
     this.legs = [0, 1].map(() => ({
-      up: new Bone(R, 0.118, mShort, 0.135), lo: new Bone(R, 0.085, mSkin, 0.1), pad: ball(0.118, mPad),
-      foot: new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.19, 5, 12).rotateX(Math.PI / 2).scale(1.05, 0.9, 1), mShoe),
+      up: new Bone(R, 0.07, mShort, 0.088), lo: new Bone(R, 0.045, mSkin, 0.06), pad: ball(0.072, mPad),
+      foot: new THREE.Mesh(new THREE.CapsuleGeometry(0.052, 0.17, 5, 12).rotateX(Math.PI / 2).scale(1.05, 0.85, 1), mShoe),
     }));
     for (const a of this.arms) R.add(a.hand, a.pad, a.sh);
     for (const l of this.legs) { l.foot.castShadow = true; R.add(l.foot, l.pad); }
     // Soft shadow blob on the ground below, also shows where you will land.
-    this.blob = new THREE.Mesh(new THREE.CircleGeometry(0.75, 16).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.3, depthWrite: false }));
+    this.blob = new THREE.Mesh(new THREE.CircleGeometry(0.55, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.3, depthWrite: false }));
     this.t = { hip: V(), chest: V(), head: V(), hL: V(), hR: V(), fL: V(), fR: V(), kL: V(), kR: V(), eL: V(), eR: V(), sL: V(), sR: V(), lL: V(), lR: V() };
     this.pose = { whip: 0, table: 0, bar: 0, noh: 0, sup: 0, crash: 0 };
     this.time = Math.random() * 10;
@@ -171,7 +172,7 @@ export class BikeModel {
     const bob = st.pedaling && !st.air ? Math.sin(st.crank * 2) * 0.015 : 0;
     T.hip.set(st.lean * -0.06, 1.12 - sq * 0.22 - sit + bob, 0.3);
     T.chest.set(0, 1.5 - sq * 0.24 - sit * 0.5, -0.02);
-    T.head.set(0, 1.86 - sq * 0.24, -0.15);
+    T.head.set(0, 1.76 - sq * 0.24, -0.17);
     if (st.air && !st.trick) { T.hip.y += 0.05; T.hip.z += 0.06; }
     // Tricks.
     if (P.whip > 0.001) { T.hip.x += 0.1 * P.whip; T.hip.z -= 0.05 * P.whip; }
@@ -183,7 +184,7 @@ export class BikeModel {
     }
     if (P.noh > 0.001) {
       T.hL.lerp(_m.set(-0.86, 1.95, 0.12), P.noh); T.hR.lerp(_m.set(0.86, 1.95, 0.12), P.noh);
-      T.chest.set(0, 1.5 + 0.1 * P.noh, -0.02 + 0.2 * P.noh); T.head.set(0, 1.86 + 0.12 * P.noh, -0.15 + 0.24 * P.noh);
+      T.chest.set(0, 1.5 + 0.1 * P.noh, -0.02 + 0.2 * P.noh); T.head.set(0, 1.76 + 0.12 * P.noh, -0.17 + 0.24 * P.noh);
       T.hip.z += 0.05 * P.noh;
     }
     if (P.sup > 0.001) {
@@ -204,9 +205,9 @@ export class BikeModel {
     this.headG.rotation.set(-0.15 - 1.0 * P.sup + 0.3 * P.noh - sq * 0.3, -st.steer * 0.35, 0);
     this.pack.position.copy(T.hip).lerp(T.chest, 0.62);
     this.pack.quaternion.setFromUnitVectors(UP, _d);
-    this.pack.translateZ(0.2);
+    this.pack.translateZ(0.15);
     const side = _m.set(1, 0, 0);
-    T.sL.copy(T.chest).addScaledVector(side, -0.22); T.sR.copy(T.chest).addScaledVector(side, 0.22);
+    T.sL.copy(T.chest).addScaledVector(side, -0.19); T.sR.copy(T.chest).addScaledVector(side, 0.19);
     T.lL.copy(T.hip).addScaledVector(side, -0.12); T.lR.copy(T.hip).addScaledVector(side, 0.12);
     const eh = _q.set(0, -0.35 + P.noh, 0.6 - P.noh * 0.4);
     for (let i = 0; i < 2; i++) {
@@ -222,7 +223,7 @@ export class BikeModel {
     if (st.groundY != null) {
       const hgt = Math.max(0, st.y - st.groundY);
       this.blob.position.set(st.x, st.groundY + 0.06, st.z);
-      this.blob.material.opacity = 0.34 * clamp(1 - hgt / 14, 0.25, 1);
+      this.blob.material.opacity = 0.2 * clamp(1 - hgt / 14, 0.25, 1);
       this.blob.scale.setScalar(1 + hgt * 0.07);
     }
   }
