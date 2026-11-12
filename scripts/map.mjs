@@ -16,7 +16,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   set(x, y, g > 1 ? [40, 90, 200] : (Math.round(wz / 100) * 100 === Math.round(wz) || Math.round(wx / 100) * 100 === Math.round(wx)) ? [70, 95, 70] : [50, 80, 50]);
 }
 for (const t of course.trees) dot(t.x, t.z, 0, [30, 55, 30]);
-const COL = { main: [230, 200, 150], green: [80, 230, 90], blue: [90, 160, 255], black: [20, 20, 20] };
+const COL = { main: [230, 200, 150], green: [80, 230, 90], blue: [90, 160, 255], black: [20, 20, 20], mega: [200, 60, 240] };
 for (const t of trails) {
   for (let i = 0; i < t.n; i++) {
     let c = COL[t.diff];

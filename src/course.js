@@ -11,6 +11,9 @@ export const DOWN = 0.34;          // average fall-line slope of the mountain
 const ZB = -2330;           // below this the mountain levels out into the valley
 const GMIN = 0.045, GMAX = 0.62; // trail grade limits
 const KBANK = 4.5;          // berm tilt per unit of curvature
+export const STAIR_T = 0.8;  // depth of one stair tread
+const STAIR_A = 0.16;       // height of one stair step
+const ZONE = { rock: 1, roots: 2, squeeze: 3, stairs: 4 };
 export const LAKE_Y = DOWN * (ZB - 130) - 3;
 export const VALLEY_Z = ZB;
 
@@ -124,6 +127,15 @@ class Path {
   skinny(len, h = 1.2, hw = 0.8) { return this.mark('skinny', { h, len, hw }).go(len); }
   drop(len = 12, hw = 1.8) { return this.mark('drop', { len, hw }).go(len); }
   rough(len, kind) { return this.mark('rough', { len, kind }).go(len); }
+  // A narrow gap between two rows of boulders.
+  squeeze(len) { const w = this.cw; this.cw = 0.8; this.mark('rough', { len, kind: 'squeeze' }).go(len); this.cw = w; return this; }
+  stairs(len) { const g = this.cg; this.cg = 0.3; this.mark('stairs', { len }).mark('rough', { len, kind: 'stairs' }).go(len); this.cg = g; return this; }
+  // A straight that holds a flight of stairs in the city and is plain trail on the mountain.
+  steps(len) {
+    if (WORLD !== 'city') return this.go(len);
+    const n = Math.floor((len - 4) / STAIR_T);
+    return this.go(2).stairs(n * STAIR_T).go(len - 2 - n * STAIR_T);
+  }
   cp() { return this.mark('cp'); }
 }
 
@@ -137,7 +149,7 @@ function smoothArr(a, r) {
   return o;
 }
 
-const WOOD_HW = { main: 2.1, green: 2.4, blue: 1.7, black: 1.2 };
+const WOOD_HW = { main: 2.1, green: 2.4, blue: 1.7, black: 1.2, mega: 1.2 };
 
 function finalize(P, y0, g0 = 0.1) {
   const n = P.x.length;
@@ -174,7 +186,7 @@ function finalize(P, y0, g0 = 0.1) {
   for (const m of P.marks) {
     const s0 = m.s, s1 = m.s + (m.len || 0);
     switch (m.type) {
-      case 'kicker': case 'table': case 'roller': t.feats.push({ ...m, s0, s1 }); break;
+      case 'kicker': case 'table': case 'roller': case 'stairs': t.feats.push({ ...m, s0, s1 }); break;
       case 'ramp': t.decks.push({ type: 'ramp', s0, s1, hw: m.hw, h: m.h, rails: false }); break;
       case 'skinny': t.decks.push({ type: 'skinny', s0, s1, hw: m.hw, h: m.h, rails: false }); break;
       case 'drop': t.decks.push({ type: 'flat', s0, s1, hw: m.hw, rails: false, y0: 0 }); break;
@@ -199,7 +211,7 @@ function finalize(P, y0, g0 = 0.1) {
     for (const sp of t.spans) t.gw[i] = Math.min(t.gw[i], clamp(Math.max(sp.s0 - s, s - sp.s1) / 2.5, 0, 1));
     t.feats.forEach((f, q) => { if (s >= f.s0 - 1.5 && s <= f.s1 + 1.5) t.fi[i] = q; });
     t.decks.forEach((d, q) => { if (s >= d.s0 - 1.5 && s <= d.s1 + 1.5 && (t.di[i] < 0 || (s >= d.s0 && s <= d.s1))) t.di[i] = q; });
-    for (const zn of t.zones) if (s >= zn.s0 && s <= zn.s1) t.rg[i] = zn.kind === 'rock' ? 1 : 2;
+    for (const zn of t.zones) if (s >= zn.s0 && s <= zn.s1) t.rg[i] = ZONE[zn.kind];
   }
   return t;
 }
@@ -208,6 +220,7 @@ function finalize(P, y0, g0 = 0.1) {
 function dirtOff(f, s) {
   if (s < f.s0 || s > f.s1) return 0;
   const x = s - f.s0, L = f.s1 - f.s0;
+  if (f.type === 'stairs') return STAIR_A * ((x / STAIR_T) % 1); // level treads on a falling trail
   if (f.type === 'kicker') return f.h * Math.pow(x / L, 1.7);
   if (f.type === 'roller') return f.h * 0.5 * (1 - Math.cos(2 * Math.PI * x / L));
   if (x < f.lu) return f.h * Math.pow(x / f.lu, 1.5);
@@ -231,7 +244,7 @@ export const course = {
   finishP: 0, finish: null, start: null, meadow: [0, 0], bounds: null,
 };
 
-const W = { main: 2.3, green: 2.8, blue: 2.0, black: 1.5 };
+const W = { main: 2.3, green: 2.8, blue: 2.0, black: 1.5, mega: 1.5 };
 
 function layout() {
   const add = (P, y0, g0) => { const t = finalize(P, y0, g0); t.idx = trails.length; trails.push(t); return t; };
@@ -277,25 +290,29 @@ function layout() {
   P.grade(0).mark('start', { len: 16, hw: 4.6 }).go(16).grade(GMIN)
     .go(30).arc(30, 45).arc(-60, 40).arc(60, 40).arc(-30, 45)
     .go(14).kicker(0.9, 5).go(26)
-    .arc(70, 26).go(40).arc(-140, 13).go(55).arc(140, 13).go(30).arc(-70, 28)
+    .arc(70, 26).steps(40).arc(-140, 13).steps(55).arc(140, 13).go(30).arc(-70, 28)
     .go(16).roller().roller().roller().go(10).cp().go(30);
   const m1 = main(add(P, baseNG(0, 16), 0));
 
   const f1 = fork(m1, [
     { name: 'Meadow Way', diff: 'green', build: P => P
-      .arc(-45, 40).go(60).arc(90, 45).go(8).table(0.7, 5, 4, 6).go(8)
+      .arc(-45, 40).steps(60).arc(90, 45).go(8).table(0.7, 5, 4, 6).go(8)
       .arc(-90, 45).go(18).roller(0.5).roller(0.5).go(11).arc(45, 40).go(25) },
     { name: 'Timber Line', diff: 'blue', build: P => P
       .arc(50, 30).go(10).kicker(1.2, 6).go(24).arc(25, 30).go(45)
       .arc(-150, 12.5).go(50).arc(75, 22)
       .go(12).table(1.1, 5, 5, 6).go(16).skinny(24, 1.1, 0.9).go(10) },
+    // Straight down the fall line: a boulder squeeze, then a giant ramp.
+    { name: 'Freefall', diff: 'mega', build: P => P
+      .go(34).arc(-10, 80).go(8).squeeze(44).go(8).arc(10, 80)
+      .go(10).ramp(5, 14, 2.2).w(3.4).go(60).arc(-30, 60) },
   ]);
 
   // 2. Pine Flow: roots, a rock garden, tighter berms.
   const m2 = cont(f1, 'Pine Flow', P => P
-    .go(25).arc(-50, 30).go(10).rough(30, 'roots').go(5).arc(110, 20)
+    .steps(25).arc(-50, 30).go(10).rough(30, 'roots').go(5).arc(110, 20)
     .go(15).table(1.0, 5, 5, 6).go(19).arc(-125, 15)
-    .go(12).rough(34, 'rock').go(10).arc(135, 14).go(30).arc(-70, 28)
+    .go(12).rough(34, 'rock').go(10).arc(135, 14).steps(30).arc(-70, 28)
     .go(14).kicker(1.3, 6).go(30).cp().go(30));
 
   const f2 = fork(m2, [
@@ -305,8 +322,8 @@ function layout() {
       .go(12).table(1.3, 6, 5, 7).go(22).arc(-40, 30).arc(80, 30).arc(-40, 30)
       .skinny(20, 1.2, 0.9).go(31) },
     { name: 'Fern Loop', diff: 'green', build: P => P
-      .arc(-60, 35).go(85).arc(120, 24).go(12).roller(0.5).roller(0.5).go(12)
-      .arc(-120, 24).go(50).arc(110, 26).go(10) },
+      .arc(-60, 35).steps(50).go(35).arc(120, 24).go(12).roller(0.5).roller(0.5).go(12)
+      .arc(-120, 24).steps(50).arc(110, 26).go(10) },
     { name: 'Widowmaker', diff: 'black', build: P => P
       .arc(55, 24).go(192).arc(-55, 20)
       .go(14).ramp(2.4, 8, 1.8).go(72).drop(12, 1.7).go(50)
@@ -315,7 +332,7 @@ function layout() {
 
   // 3. Valley View: open meadow, big sweepers, a three-jump rhythm line.
   const m3 = cont(f2, 'Valley View', P => P
-    .go(20).arc(-70, 40).go(25).arc(140, 30).go(30).arc(-70, 40)
+    .go(20).arc(-70, 40).steps(25).arc(140, 30).steps(30).arc(-70, 40)
     .go(14).table(1.2, 5, 5, 7).go(16).table(1.3, 5, 5, 7).go(16).table(1.4, 5, 5, 7).go(20)
     .cp().go(25));
 
@@ -327,6 +344,10 @@ function layout() {
       .arc(50, 24).go(22).arc(-50, 22)
       .go(10).ramp(2.6, 8, 1.8).go(64).skinny(26, 1.6, 0.75).go(14).drop(12, 1.7).go(30)
       .arc(-55, 20).go(14).kicker(1.8, 6).go(30) },
+    // A plank one metre wide that ends eight metres up, a giant table, a giant kicker.
+    { name: 'Skyfall', diff: 'mega', build: P => P
+      .go(30).arc(-10, 80).go(14).drop(22, 0.7).w(3).go(50).table(2.4, 8, 10, 10).go(45)
+      .kicker(3.0, 9).w(3.2).go(40) },
   ]);
 
   // 4. Final Sprint.
@@ -379,7 +400,7 @@ export function poseAt(t, s, o) {
 
 const NP = 24, pid = new Int32Array(NP), pd2 = new Float64Array(NP), pe = new Int32Array(NP), pu = new Float64Array(NP);
 
-export const newSurf = () => ({ y: 0, ground: 0, surf: 0, w: 0, trail: -1, i: 0, s: 0, lat: 0, hw: 0, th: 0, kap: 0, rough: 0, gully: 0, dist: 1e9, cov: 1e9, deck: null });
+export const newSurf = () => ({ y: 0, ground: 0, surf: 0, w: 0, trail: -1, i: 0, s: 0, lat: 0, hw: 0, th: 0, kap: 0, rough: 0, zone: 0, gully: 0, dist: 1e9, cov: 1e9, deck: null });
 
 // Everything about the ground at (x, z). yRef is the height of whoever asks:
 // wooden decks only count when you are above them, so you can pass underneath.
@@ -387,7 +408,7 @@ export const newSurf = () => ({ y: 0, ground: 0, surf: 0, w: 0, trail: -1, i: 0,
 export function surfaceAt(x, z, yRef, o) {
   const bng = baseNG(x, z), gd = gullyDepth(x, z);
   let wmax = 0, sw = 0, sh = 0, best = 1e9, cov = 1e9, dY = -1e9, np = 0, gw = 1;
-  o.trail = -1; o.deck = null; o.rough = 0; o.kap = 0;
+  o.trail = -1; o.deck = null; o.rough = 0; o.zone = 0; o.kap = 0;
   const cell = grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL)));
   if (cell) {
     for (let c = 0; c < cell.length; c++) {
@@ -419,7 +440,7 @@ export function surfaceAt(x, z, yRef, o) {
       const w = 1 - sm(hw, hw + 4 + 0.7 * Math.min(10, Math.abs(ty - bng)), d);
       if (w > 0) { const q = w * w / ((0.3 + d * d) * (0.3 + d * d)); sw += q; sh += q * ty; if (w > wmax) wmax = w; }
       if (d - hw < best) {
-        best = d - hw; o.trail = e >>> 16; o.i = i; o.s = s; o.lat = lat; o.hw = hw; o.th = t.th[i]; o.kap = t.kap[i]; o.rough = t.rg[i];
+        best = d - hw; o.trail = e >>> 16; o.i = i; o.s = s; o.lat = lat; o.hw = hw; o.th = t.th[i]; o.kap = t.kap[i]; o.zone = t.rg[i]; o.rough = o.zone === 3 ? 0 : o.zone; // a squeeze is smooth ground
         gw = t.gw[i] + (t.gw[i + 1] - t.gw[i]) * u;
       }
       // Decks are only taken from the piece the point really lies on.
@@ -502,7 +523,8 @@ export const rockiness = (x, z, gd) => sm(0.6, 2.6, gd);
 export const meadowAt = z => sm(course.meadow[0] + 40, course.meadow[0] - 20, z) * sm(course.meadow[1] - 40, course.meadow[1] + 20, z);
 
 function scatter() {
-  const rng = mulberry(20261112), o = newSurf(), L = {};
+  let rng = mulberry(20261112);
+  const o = newSurf(), L = {};
   let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
   for (const t of trails) for (let i = 0; i < t.n; i += 8) { x0 = Math.min(x0, t.x[i]); x1 = Math.max(x1, t.x[i]); z0 = Math.min(z0, t.z[i]); z1 = Math.max(z1, t.z[i]); }
   course.bounds = { x0: x0 - 190, x1: x1 + 190, z0: z0 - 260, z1: z1 + 120 };
@@ -527,8 +549,10 @@ function scatter() {
     if (d < 45) addObstacle(tr);
   }
   // Boulders beside the trail, and inside rock gardens.
-  const P = {};
+  // The MEGA lines draw from their own random numbers, so adding one leaves every other rock where it was.
+  const P = {}, rng0 = rng, rngM = mulberry(4711);
   for (const t of trails) {
+    rng = t.diff === 'mega' ? rngM : rng0;
     for (let s = 20 + rng() * 10; s < t.len - 10; s += 5) {
       poseAt(t, s, P);
       const garden = t.rg[P.i] === 1;
@@ -541,8 +565,16 @@ function scatter() {
       const rk = { x, z, y: o.y, r: r * 0.8, rr: r, top: o.y + r * 0.9, rock: true, seed: rng() };
       course.rocks.push(rk); addObstacle(rk);
     }
+    // Two rows of boulders with just enough room for a bike between them.
+    for (const zn of t.zones) if (zn.kind === 'squeeze') for (let s = zn.s0 + 3; s < zn.s1 - 2; s += 2.1) for (const side of [-1, 1]) {
+      poseAt(t, s + (side > 0 ? 1 : 0), P);
+      const r = 1 + rng() * 0.35, lat = side * (P.hw + r * 0.8 + 0.3), x = P.x + Math.cos(P.th) * lat, z = P.z + Math.sin(P.th) * lat;
+      surfaceAt(x, z, -1e9, o);
+      const rk = { x, z, y: o.y, r: r * 0.8, rr: r, top: o.y + r * 0.9, rock: true, seed: rng() };
+      course.rocks.push(rk); addObstacle(rk);
+    }
   }
-  if (WORLD === 'city') cityBlocks(rng);
+  if (WORLD === 'city') cityBlocks(rng0);
 }
 
 function furnish() {
@@ -562,7 +594,7 @@ function furnish() {
   }
   course.checkpoints.forEach((cp, i) => { cp.n = i + 1; for (const g of cp.gates) arch(trails[g.t], g.s, 'cp', 'CHECKPOINT ' + (i + 1), 'main'); });
   arch(trails[course.finish.t], course.finish.s, 'finish', 'FINISH', 'main');
-  const LEVEL = { green: 'EASY', blue: 'INTERMEDIATE', black: 'EXPERT' };
+  const LEVEL = { green: 'EASY', blue: 'INTERMEDIATE', black: 'EXPERT', mega: 'MEGA' };
   for (const f of course.forks) {
     const m = trails[f.from];
     f.options = f.branches.map(b => {

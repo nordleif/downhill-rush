@@ -51,5 +51,8 @@ ride('tricks', 'black', { tricks: true, pedalTo: 13 });
 ride('keys', 'blue', { digital: true });
 ride('keysB', 'black', { digital: true });
 ride('fast', 'black', { pedalTo: 30, grip: 12 });
+ride('mega', 'mega');
+ride('megaC', 'mega', { pedalTo: 4, grip: 7 });
+ride('megaK', 'mega', { digital: true });
 for (const b of [3, 5]) for (const route of ['green', 'blue', 'black']) ride(BIKES[b].id.slice(0, 5) + route[0], route, {}, b);
 ride('beastT', 'black', { tricks: true, pedalTo: 13 }, 5);

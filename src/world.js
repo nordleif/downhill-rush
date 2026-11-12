@@ -4,13 +4,13 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import {
-  course, trails, surfaceAt, newSurf, poseAt, deckY, GULLIES, gullyX, baseNG, LAKE_Y, VALLEY_Z, rockiness, meadowAt, forestAt, DOWN, WORLD,
+  course, trails, surfaceAt, newSurf, poseAt, deckY, GULLIES, gullyX, baseNG, LAKE_Y, VALLEY_Z, rockiness, meadowAt, forestAt, DOWN, WORLD, STAIR_T,
 } from './course.js';
 import { fbm, mulberry, clamp, sm } from './noise.js';
 import { pbr, tex } from './pbr.js';
 
 const C = h => new THREE.Color(h);
-export const DIFF_COLOR = { main: 0xf2a23a, green: 0x2fae55, blue: 0x2f7be0, black: 0x23262d };
+export const DIFF_COLOR = { main: 0xf2a23a, green: 0x2fae55, blue: 0x2f7be0, black: 0x23262d, mega: 0xb01fd6 };
 export const SKY = { fog: C(0xa9bccd) };
 
 function canvasTex(w, h, draw, repeat) {
@@ -114,20 +114,22 @@ function buildTrailStrips(scene, mat) {
   const o = newSurf(), col = new THREE.Color(), P = {};
   const U = 1.3; // the dirt can reach this many half widths to each side
   for (const t of trails) {
-    const rows = [];
+    const rows = [], shade = new Map();
+    const onStairs = s => t.feats.some(f => f.type === 'stairs' && s > f.s0 - 0.4 && s < f.s1 + 0.4);
     for (let i = 0; i < t.n; i++) rows.push(t.s[i]);
     for (const f of t.feats) if (f.type === 'kicker') rows.push(f.s1 - 0.02, f.s1 + 0.02);
+    for (const f of t.feats) if (f.type === 'stairs') for (let s = f.s0 + STAIR_T; s < f.s1 + 0.1; s += STAIR_T) { rows.push(s - 0.03, s + 0.03); shade.set(s - 0.03, 1.12); shade.set(s + 0.03, 0.45); } // one riser per step, dark at its foot
     rows.sort((a, b) => a - b);
     const NC = 15, pos = [], cl = [], uv = [], idx = [];
     rows.forEach((s, r) => {
       poseAt(t, s, P);
-      const hw = P.hw, cx = Math.cos(P.th), cz = Math.sin(P.th), open = t.gw[P.i] < 0.6;
+      const hw = P.hw, cx = Math.cos(P.th), cz = Math.sin(P.th), open = t.gw[P.i] < 0.6 || onStairs(s), dim = shade.get(s) ?? 1; // stairs are paved, not asphalt
       const lats = [-(hw + RIB), -(hw + 3.2), -(hw + 1.2), -hw * U, -hw, -(hw - 0.7), -hw * 0.4, 0, hw * 0.4, hw - 0.7, hw, hw * U, hw + 1.2, hw + 3.2, hw + RIB];
       for (let c = 0; c < NC; c++) {
         const x = P.x + cx * lats[c], z = P.z + cz * lats[c];
         surfaceAt(x, z, -1e9, o);
         pos.push(x, o.y - (c === 0 || c === NC - 1 ? 0.3 : 0), z);
-        groundColor(x, z, o, col); cl.push(col.r, col.g, col.b);
+        groundColor(x, z, o, col); cl.push(col.r, col.g, col.b * dim);
         uv.push(open ? -1 : 0.5 + 0.5 * lats[c] / (hw * U), s / 8);
         if (r && c) { const a = (r - 1) * NC + c - 1, b = a + 1, d = r * NC + c - 1, e = d + 1; idx.push(a, b, d, b, e, d); }
       }
@@ -489,7 +491,7 @@ function buildDecks(scene) {
 }
 
 // ------------------------------------------------------------------ signs and gates
-const SYMBOL = { green: '●', blue: '■', black: '◆' };
+const SYMBOL = { green: '●', blue: '■', black: '◆', mega: '★' };
 const FONT = '900 italic 64px "Arial Black", "Segoe UI", Impact, sans-serif';
 
 function bannerTex(a) {

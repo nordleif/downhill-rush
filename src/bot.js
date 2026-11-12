@@ -17,6 +17,10 @@ export function makeBot(prefer = 'blue', opts = {}) {
   const bot = (r, inp) => {
     let rt = r.trail, rs = r.s;
     if (r.ground && r.w < 0.5 && !r.deck) { locate(r.x, r.z, LO); rt = LO.trail; rs = LO.s; }
+    if (!route.includes(rt)) { // on a neighbouring branch where they merge: carry on along our own
+      const mine = route.find(i => trails[i].p0 === trails[rt].p0);
+      if (mine != null) { rs = rs / trails[rt].len * trails[mine].len; rt = mine; }
+    }
     if (route.includes(rt) && route.indexOf(rt) >= route.indexOf(cur)) { cur = rt; cs = rs; }
     const A = ahead(5 + r.speed * 0.5);
     inp.steer = r.ground ? clamp(wrapPi(Math.atan2(A.x - r.x, -(A.z - r.z)) - r.yaw) * 2.5, -1, 1) : 0;

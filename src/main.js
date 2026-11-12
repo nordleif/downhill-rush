@@ -57,7 +57,7 @@ let bot = makeBot(QS.get('route') || 'blue', { tricks: true, pedalTo: 13 });
 
 // state: menu (demo ride behind the menu), shop, gate, count, race, done
 const G = { same: false, state: 'menu', paused: false, time: 0, count: 0, lastCount: 9, cp: 0, cpAt: null, prog: 0, cleanSince: true, doneT: 0, result: null, auto: QS.has('auto') };
-const F = { corner: null, skinny: null, trickHold: 0 };
+const F = { corner: null, skinny: null, squeeze: false, trickHold: 0 };
 const SLOTS = [[-1.1, 0], [1.1, 0], [-3.1, 0], [3.1, 0], [-1.1, -2.4], [1.1, -2.4], [-3.1, -2.4], [3.1, -2.4]];
 
 // ------------------------------------------------------------------ multiplayer
@@ -218,7 +218,7 @@ function showResults() {
 }
 
 const mapCtx = $('map').getContext('2d');
-const MAPC = { main: '#f4dcae', green: '#35d267', blue: '#4f9bff', black: '#15171c' };
+const MAPC = { main: '#f4dcae', green: '#35d267', blue: '#4f9bff', black: '#15171c', mega: '#c53cf0' };
 function drawMap() {
   const g = mapCtx, W = 300, sc = 1.55, r = me.r, yaw = cam.yaw, cs = Math.cos(yaw), sn = Math.sin(yaw), R2 = 125 * 125;
   g.clearRect(0, 0, W, W); g.save(); g.beginPath(); g.arc(150, 150, 147, 0, 7); g.clip();
@@ -308,7 +308,7 @@ function handleEvents() {
     }
     else if (e.t === 'crash') {
       const lost = me.score.list(r.spin, r.flip).length;
-      me.score.crash(); G.cleanSince = false; F.corner = F.skinny = null; sfx.crash(); cam.shake = 1;
+      me.score.crash(); G.cleanSince = false; F.corner = F.skinny = null; F.squeeze = false; sfx.crash(); cam.shake = 1;
       fx.dust(r.x, r.y, r.z, 22, 6);
       if (live) showTrick('CRASH', lost ? 'COMBO LOST' : '', '', 1.5, 'bad');
     }
@@ -335,7 +335,9 @@ function trackRace(dt) {
     else if (F.corner) { if (F.corner.t > 0.9 && F.corner.min > 9.5) flowPop('Carve', 50 + Math.round(F.corner.min - 9.5) * 10); F.corner = null; }
     const dk = r.deck && r.deck.type === 'skinny' ? r.deck : null;
     if (dk && !F.skinny) F.skinny = { dk, ok: r.s < dk.s0 + 5 };
-    else if (F.skinny && !dk) { if (F.skinny.ok && r.s >= F.skinny.dk.s1 - 2) flowPop('Skinny', 300); F.skinny = null; }
+    else if (F.skinny && !dk) { if (F.skinny.ok && r.s >= F.skinny.dk.s1 - 2) flowPop('Skinny', F.skinny.dk.hw < 0.7 ? 800 : 300); F.skinny = null; }
+    if (r.zone === 3) F.squeeze = true;
+    else if (F.squeeze) { F.squeeze = false; flowPop('Squeeze', 600); }
   }
 }
 

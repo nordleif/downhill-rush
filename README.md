@@ -35,10 +35,19 @@ https://downhill-rush.bo-29c.workers.dev
 - Flow points come from carving corners at speed, clean sections between checkpoints, jump chains, long air and riding a whole skinny.
 - The total is tricks plus flow plus a time bonus. Medal limits are in `src/score.js`.
 
+## MEGA lines
+
+Two forks have a purple **MEGA** branch that runs straight down the fall line.
+
+- **Freefall** (first fork): a gap between two rows of boulders barely wider than the bike, then a giant ramp with about two seconds of air.
+- **Skyfall** (third fork): a plank 1.4 m wide that ends eight metres above the ground, a giant table and a giant kicker.
+- Riding the whole boulder gap pays 600 flow points.
+
 ## Worlds
 
 - **World** on the start screen switches between Mountain and City. Switching reloads the page.
 - City is the same trail layout in a hillside town: asphalt streets, paving, buildings, street lamps and a park.
+- Ten straights in the city are flights of stairs.
 - A room uses the world of its host. A rider who joins from the other world is moved over.
 - `?world=city` in the address picks the world directly.
 

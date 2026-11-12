@@ -26,7 +26,7 @@ export function newRider() {
     crashed: false, crashT: 0, tum: 0, tumV: 0, tumAx: 0,
     pitch: 0, lean: 0, susp: 0, suspV: 0, crank: 0, wheel: 0,
     surf: 1, w: 1, trail: 0, s: 0, lat: 0, kap: 0, deck: null, slide: 0, braking: 0, pedaling: 0,
-    safeT: 0, safeS: 9, clear: 0, stuck: 0,
+    safeT: 0, safeS: 9, clear: 0, stuck: 0, zone: 0,
     bike: NEUTRAL, // stats of the bike being ridden, see bikes.js
   };
 }
@@ -136,15 +136,17 @@ function groundStep(r, inp, dt, ev) {
   // Vertical speed comes from the slope over the last half metre, not from one
   // frame, so small steps and ripples in the ground do not kick the bike up.
   let vyG = clamp((S2.y - r.y) / dt, -30, 30);
-  if (sp > 1) vyG = clamp((S2.y - hAt(nx - r.vx / sp * 0.5, nz - r.vz / sp * 0.5, yR)) / 0.5 * sp, -30, 30);
+  // On stairs the reach is two whole treads, which gives the slope of the flight.
+  const back = S2.zone === 4 ? 1.6 : 0.5;
+  if (sp > 1) vyG = clamp((S2.y - hAt(nx - r.vx / sp * back, nz - r.vz / sp * back, yR)) / back * sp, -30, 30);
   const vyB = r.vy - G * dt, yb = r.y + vyB * dt;
   r.x = nx; r.z = nz;
   if (inp.jump) { r.y = Math.max(S2.y, yb); r.vy = Math.max(vyG, 0) * 0.6 + HOP; takeoff(r, ev, true); }
-  else if (yb > S2.y + 0.06) { r.y = yb; r.vy = vyB; takeoff(r, ev, false); }
+  else if (yb > S2.y + (S2.zone === 4 ? 0.3 : 0.06)) { r.y = yb; r.vy = vyB; takeoff(r, ev, false); } // wheels stay down on stairs
   else if (yb > S2.y) { r.y = yb; r.vy = vyB; } // wheels unweighted, still in control
   else { r.y = S2.y; r.vy = vyG; }
   // Remember where we are for progress, flow and respawns.
-  r.surf = S2.surf; r.w = S2.w; r.kap = S2.kap; r.deck = S2.deck;
+  r.surf = S2.surf; r.w = S2.w; r.kap = S2.kap; r.deck = S2.deck; r.zone = S2.zone;
   if (S2.trail >= 0 && (S2.w > 0.5 || S2.deck)) {
     r.trail = S2.trail; r.s = S2.s; r.lat = S2.lat;
     if (sp > 3) { r.safeT = S2.trail; r.safeS = S2.s; }
