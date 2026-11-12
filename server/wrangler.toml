@@ -1,0 +1,17 @@
+name = "downhill-rush"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+account_id = "29c177abefbb07ad2b3f93f5641d26de"
+
+# The built game page. Requests that match a file are served from here;
+# everything else (the /room/* WebSockets) goes to the Worker.
+[assets]
+directory = "../docs"
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

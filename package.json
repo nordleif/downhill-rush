@@ -1,0 +1,19 @@
+{
+  "name": "downhill-rush",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Third-person downhill mountain bike game for the browser (three.js)",
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch",
+    "sim": "node scripts/sim.mjs",
+    "map": "node scripts/map.mjs"
+  },
+  "dependencies": {
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

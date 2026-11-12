@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#2f86e6">
+<title>Downhill Rush</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:#2f86e6;font-family:"Arial Black","Segoe UI",Impact,system-ui,sans-serif;color:#fff;user-select:none;-webkit-user-select:none;touch-action:none}
+canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+.it{font-style:italic;font-weight:900;letter-spacing:.01em}
+.sh{text-shadow:0 3px 0 rgba(0,0,0,.45),0 0 14px rgba(0,0,0,.35)}
+#hud{position:fixed;inset:0;pointer-events:none;display:none}
+#hud.on{display:block}
+#pos{position:absolute;left:max(16px,env(safe-area-inset-left));top:14px;font-size:64px;line-height:1}
+#pos i{font-size:30px;opacity:.9}#pos small{display:block;font-size:13px;letter-spacing:.14em;opacity:.85;margin-top:-2px}
+#board{position:absolute;left:max(16px,env(safe-area-inset-left));top:100px;width:210px;font:700 14px "Segoe UI",system-ui,sans-serif}
+#board div{display:flex;gap:8px;padding:4px 10px;margin-bottom:3px;background:rgba(10,20,35,.55);border-radius:8px}
+#board div.me{background:#19c3d6;color:#062a33}
+#board b{width:14px}#board span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#cps{position:absolute;left:50%;top:12px;transform:translateX(-50%);text-align:center;background:rgba(10,20,35,.45);padding:6px 18px 9px;border-radius:14px}
+#cpt{font-size:15px;letter-spacing:.1em}
+#dots{display:flex;align-items:center;justify-content:center;margin-top:5px}
+#dots i{width:16px;height:16px;border-radius:50%;border:3px solid #fff;background:rgba(255,255,255,.15)}
+#dots i.ok{background:#35d267;border-color:#fff}#dots i.now{background:#ffd23c;transform:scale(1.25)}
+#dots u{width:22px;height:4px;background:rgba(255,255,255,.5)}#dots u.ok{background:#35d267}
+#clock{position:absolute;right:max(16px,env(safe-area-inset-right));top:14px;font-size:34px;background:rgba(10,20,35,.45);padding:4px 14px;border-radius:12px;font-variant-numeric:tabular-nums}
+#score{position:absolute;right:max(16px,env(safe-area-inset-right));top:66px;font-size:22px;color:#ffd23c;text-align:right}
+#score small{font-size:13px;color:#fff;opacity:.85}
+#trick{position:absolute;left:50%;top:21%;transform:translateX(-50%);text-align:center;white-space:nowrap;opacity:0;transition:opacity .25s}
+#trick.on{opacity:1}
+#tname{font-size:30px}
+#tpts{font-size:50px;color:#ffd23c;line-height:1.05}
+#tcombo{display:inline-block;font-size:26px;background:#ff3d8b;padding:1px 14px;border-radius:8px;transform:rotate(-4deg);margin-top:4px}
+#tcombo:empty{display:none}
+#trick.pop{animation:pop .35s cubic-bezier(.2,1.6,.4,1)}
+#trick.bad #tpts{color:#ff5a4a}
+@keyframes pop{0%{transform:translateX(-50%) scale(.6)}100%{transform:translateX(-50%) scale(1)}}
+#flow{position:absolute;right:max(16px,env(safe-area-inset-right));top:38%;text-align:right;font-size:17px}
+#flow div{animation:fl 1.9s forwards;color:#8cf0ff}
+@keyframes fl{0%{opacity:0;transform:translateX(30px)}12%{opacity:1;transform:none}75%{opacity:1}100%{opacity:0;transform:translateY(-14px)}}
+#route{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);display:flex;gap:10px;opacity:0;transition:opacity .3s;white-space:nowrap}
+#route.on{opacity:1}
+#route div{padding:8px 16px;border-radius:12px;font-size:18px;text-align:center;border:3px solid rgba(255,255,255,.85)}
+#route small{display:block;font:700 12px "Segoe UI",system-ui,sans-serif;opacity:.9}
+#map{position:absolute;left:max(16px,env(safe-area-inset-left));bottom:16px;width:150px;height:150px;border-radius:50%;background:rgba(10,20,35,.45);border:3px solid rgba(255,255,255,.7)}
+#speedo{position:absolute;right:max(16px,env(safe-area-inset-right));bottom:10px;width:170px;height:150px;text-align:center}
+#speedo svg{position:absolute;inset:0}
+#kmh{position:absolute;left:0;right:0;top:44px;font-size:58px;line-height:1}
+#speedo small{position:absolute;left:0;right:0;top:104px;font-size:16px}
+#big{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:150px;opacity:0;white-space:nowrap}
+#big.on{animation:big .9s forwards}
+#big.sm{font-size:64px}
+@keyframes big{0%{opacity:0;transform:translate(-50%,-50%) scale(2)}20%{opacity:1;transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(.9)}}
+#lines{position:fixed;inset:0;pointer-events:none;opacity:0;background:repeating-conic-gradient(from 0deg at 50% 46%,rgba(255,255,255,0) 0deg 5deg,rgba(255,255,255,.5) 5.4deg 5.7deg,rgba(255,255,255,0) 6deg 11deg);-webkit-mask-image:radial-gradient(ellipse at 50% 46%,transparent 52%,#000 100%);mask-image:radial-gradient(ellipse at 50% 46%,transparent 52%,#000 100%)}
+#room{position:absolute;left:50%;top:86px;transform:translateX(-50%);background:rgba(10,20,35,.72);padding:14px 22px;border-radius:16px;text-align:center;pointer-events:auto;display:none;min-width:260px}
+#room.on{display:block}
+#rcode{font-size:30px;letter-spacing:.06em}
+#rlist{font:700 15px "Segoe UI",system-ui,sans-serif;margin:8px 0 10px}
+#rlist span{display:inline-block;margin:2px 6px}
+#rwait{font:600 14px "Segoe UI",system-ui,sans-serif;opacity:.85}
+button{font:inherit;color:#fff;border:0;border-radius:14px;padding:12px 26px;font-size:20px;cursor:pointer;background:#ff7a1a;box-shadow:0 5px 0 #b34e08;font-style:italic;pointer-events:auto}
+button:active{transform:translateY(3px);box-shadow:0 2px 0 #b34e08}
+button.b2{background:#19a8d6;box-shadow:0 5px 0 #0d6f91}
+button.b3{background:#465366;box-shadow:0 5px 0 #2b3442}
+button.sm{font-size:15px;padding:8px 16px;border-radius:10px}
+.screen{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:18px;text-align:center;overflow:auto}
+.screen.on{display:flex}
+#menu{background:linear-gradient(180deg,rgba(15,40,80,.35),rgba(15,40,80,.05) 45%,rgba(10,25,45,.55))}
+h1{font-size:clamp(46px,9vw,104px);line-height:.9;font-style:italic;letter-spacing:-.01em}
+h1 span{color:#ffd23c;display:block}
+h2{font-size:48px;font-style:italic}
+.row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center}
+input{font:700 20px "Segoe UI",system-ui,sans-serif;padding:11px 14px;border-radius:12px;border:3px solid rgba(255,255,255,.8);background:rgba(10,20,35,.55);color:#fff;width:190px;text-align:center;outline:0;pointer-events:auto;user-select:text;-webkit-user-select:text}
+input::placeholder{color:rgba(255,255,255,.55)}
+label{font:700 13px "Segoe UI",system-ui,sans-serif;letter-spacing:.1em;display:block;margin-bottom:4px;opacity:.9}
+#err{font:700 15px "Segoe UI",system-ui,sans-serif;color:#ffd0c8;min-height:20px}
+#keys{font:600 13px "Segoe UI",system-ui,sans-serif;display:grid;grid-template-columns:auto auto;gap:3px 14px;text-align:left;background:rgba(10,20,35,.5);padding:10px 16px;border-radius:12px}
+#keys b{color:#ffd23c;text-align:right}
+#pause,#results{background:rgba(8,18,34,.66);backdrop-filter:blur(3px)}
+#medal{width:108px;height:108px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;color:#3a2a08;border:6px solid rgba(255,255,255,.75);box-shadow:0 6px 0 rgba(0,0,0,.3)}
+#stats{display:grid;grid-template-columns:auto auto;gap:4px 26px;font:700 18px "Segoe UI",system-ui,sans-serif;text-align:left;background:rgba(10,20,35,.6);padding:14px 24px;border-radius:14px}
+#stats b{text-align:right;font-variant-numeric:tabular-nums}#stats .t{font-size:24px;color:#ffd23c}
+#pbl{font-size:18px;color:#8cf0ff;min-height:22px}
+#table{font:700 15px "Segoe UI",system-ui,sans-serif;border-collapse:collapse}
+#table td{padding:3px 12px;text-align:right}#table td:nth-child(2){text-align:left}#table tr.me{color:#ffd23c}
+#touch{position:fixed;inset:0;display:none;pointer-events:none}
+body.touch #touch.on{display:block}
+#tzone{position:absolute;left:0;top:18%;bottom:0;width:46%;pointer-events:auto}
+#stick{position:absolute;width:130px;height:130px;margin:-65px 0 0 -65px;border-radius:50%;border:3px solid rgba(255,255,255,.5);background:rgba(255,255,255,.1);opacity:0;pointer-events:none}
+#knob{position:absolute;left:37px;top:37px;width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.75)}
+#touch .tb{position:absolute;pointer-events:auto;border-radius:50%;background:rgba(10,20,35,.5);border:3px solid rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;font-size:13px;font-style:italic}
+#touch .tb.on{background:rgba(255,210,60,.75);color:#222}
+#tj{right:18px;bottom:22px;width:96px;height:96px;font-size:18px!important}
+#tbk{right:128px;bottom:18px;width:74px;height:74px}
+#touch .tr{width:64px;height:64px}
+#tp{right:14px;top:112px;width:44px;height:44px}
+body.touch #map{bottom:auto;top:92px;width:104px;height:104px}
+body.touch #speedo{bottom:auto;top:100px;right:66px;transform:scale(.62);transform-origin:top right}
+body.touch #keys{display:none}
+@media (max-width:760px){#pos{font-size:44px}#pos i{font-size:22px}#clock{font-size:24px}#cps{transform:translateX(-50%) scale(.82);transform-origin:top}#tname{font-size:20px}#tpts{font-size:34px}#tcombo{font-size:18px}#big{font-size:96px}#board{display:none}#score{top:54px;font-size:17px}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="lines"></div>
+<div id="hud">
+  <div id="pos" class="it sh"><span id="posn">1</span><i id="posof">/1</i><small>POS</small></div>
+  <div id="board"></div>
+  <div id="cps" class="it"><div id="cpt">CHECKPOINT 0/6</div><div id="dots"></div></div>
+  <div id="clock" class="it">0:00.00</div>
+  <div id="score" class="it sh"><span id="pts">0</span> <small>PTS</small></div>
+  <div id="trick" class="it sh"><div id="tname"></div><div id="tpts"></div><div id="tcombo"></div></div>
+  <div id="flow" class="it sh"></div>
+  <div id="route" class="it"></div>
+  <canvas id="map" width="300" height="300"></canvas>
+  <div id="speedo" class="it sh">
+    <svg viewBox="0 0 170 150"><path d="M22 128 A70 70 0 1 1 148 128" fill="none" stroke="rgba(10,20,35,.5)" stroke-width="15" stroke-linecap="round"/><path id="arc" d="M22 128 A70 70 0 1 1 148 128" fill="none" stroke="#35d9f0" stroke-width="11" stroke-linecap="round" stroke-dasharray="0 400"/></svg>
+    <div id="kmh">0</div><small>km/h</small>
+  </div>
+  <div id="big" class="it sh"></div>
+  <div id="room">
+    <div id="rcode" class="it"></div>
+    <div id="rlist"></div>
+    <div class="row"><button id="rstart">Start Race</button><button id="rcopy" class="b2 sm">Copy Link</button></div>
+    <div id="rwait">Waiting for host</div>
+  </div>
+</div>
+<div id="touch">
+  <div id="tzone"></div>
+  <div id="stick"><div id="knob"></div></div>
+  <div class="tb" id="tp" data-act="pause">II</div>
+  <div class="tb" id="tj" data-act="jump">JUMP</div>
+  <div class="tb" id="tbk" data-act="brake">BRAKE</div>
+  <div class="tb tr" style="right:26px;bottom:132px" data-act="1">WHIP</div>
+  <div class="tb tr" style="right:100px;bottom:112px" data-act="2">TABLE</div>
+  <div class="tb tr" style="right:172px;bottom:104px" data-act="3">BAR</div>
+  <div class="tb tr" style="right:60px;bottom:206px" data-act="4">NO-H</div>
+  <div class="tb tr" style="right:136px;bottom:186px" data-act="5">SUPER</div>
+</div>
+<div id="menu" class="screen on">
+  <h1 class="sh">DOWNHILL<span>RUSH</span></h1>
+  <div><label for="name">NAME</label><input id="name" maxlength="12" autocomplete="off" spellcheck="false"></div>
+  <div class="row"><button id="solo">Ride Solo</button><button id="create" class="b2">Create Race</button></div>
+  <div class="row"><input id="code" placeholder="Room code" maxlength="20" autocomplete="off" spellcheck="false"><button id="join" class="b2">Join Race</button></div>
+  <div id="err"></div>
+  <div id="keys">
+    <b>W A S D / Arrows</b><span>Pedal, steer, brake</span>
+    <b>Space</b><span>Jump</span>
+    <b>Shift</b><span>Brake</span>
+    <b>A D in the air</b><span>Spin</span>
+    <b>W S in the air</b><span>Frontflip, backflip</span>
+    <b>1 2 3 4 5</b><span>Whip, Tabletop, Barspin, No-Hander, Superman</span>
+    <b>R</b><span>Back to checkpoint</span>
+    <b>Esc</b><span>Pause</span>
+  </div>
+</div>
+<div id="pause" class="screen">
+  <h2 class="sh">Paused</h2>
+  <button id="resume">Resume</button>
+  <button id="prestart" class="b2">Restart</button>
+  <button id="pcopy" class="b2">Copy Link</button>
+  <button id="pmute" class="b3">Sound Off</button>
+  <button id="leave" class="b3">Leave</button>
+</div>
+<div id="results" class="screen">
+  <h2 class="sh">Finish</h2>
+  <div id="medal" class="it"></div>
+  <div id="pbl" class="it"></div>
+  <div id="stats"></div>
+  <table id="table"></table>
+  <div class="row"><button id="again">Ride Again</button><button id="rleave" class="b3">Leave</button></div>
+  <div id="rhost" style="font:600 14px 'Segoe UI',system-ui,sans-serif;opacity:.85"></div>
+</div>
+<script>/*GAME*/</script>
+</body>
+</html>
