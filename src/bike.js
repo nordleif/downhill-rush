@@ -70,6 +70,7 @@ export class BikeModel {
   constructor(outfit) {
     const o = OUTFITS[outfit % OUTFITS.length];
     this.root = new THREE.Group();           // position + heading
+    this.root.scale.setScalar(1.2);          // a little larger than life
     this.pitchG = new THREE.Group(); this.pitchG.position.y = 0.9; this.root.add(this.pitchG);
     this.body = new THREE.Group(); this.body.position.y = -0.9; this.pitchG.add(this.body); // lean about the tyres
     this.bike = new THREE.Group(); this.body.add(this.bike);

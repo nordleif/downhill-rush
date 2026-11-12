@@ -24,7 +24,7 @@ export class ChaseCam {
     // looks down the slope, so a steep pitch fills the view.
     const fx = Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     if (r.ground) this.g += (clamp((r.y - surfaceAt(r.x + fx * 7, r.z + fz * 7, r.y + 1, S).y) / 7, -0.15, 0.7) - this.g) * Math.min(1, dt * 2.5);
-    const dist = 4.6 + sp * 0.1, h = 3.7 + sp * 0.04 + (r.ground ? 0 : 0.5) + dist * this.g * 0.75;
+    const dist = 3.9 + sp * 0.085, h = 3.3 + sp * 0.035 + (r.ground ? 0 : 0.5) + dist * this.g * 0.75;
     tgt.set(r.x - Math.sin(this.yaw) * dist, this.ty + h, r.z + Math.cos(this.yaw) * dist);
     for (const o of obstaclesNear(tgt.x, tgt.z, 3, near)) {
       if (o.rock) continue;

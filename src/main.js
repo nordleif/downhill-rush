@@ -30,25 +30,6 @@ renderer.shadowMap.enabled = quality > 0; renderer.shadowMap.type = THREE.PCFSof
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, 1, 0.3, 9500);
 const world = buildWorld(scene, quality);
-// Ink outlines: the scene is drawn to a texture, then every jump in depth gets a dark line.
-const rt = new THREE.WebGLRenderTarget(4, 4, { samples: quality ? 4 : 0, type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(4, 4) });
-const ink = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
-  depthTest: false, depthWrite: false,
-  uniforms: { tC: { value: rt.texture }, tD: { value: rt.depthTexture }, px: { value: new THREE.Vector2() }, nf: { value: new THREE.Vector2(camera.near, camera.far) } },
-  vertexShader: 'varying vec2 u; void main(){ u = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
-  fragmentShader: `varying vec2 u; uniform sampler2D tC; uniform sampler2D tD; uniform vec2 px; uniform vec2 nf;
-    float lin(vec2 p){ float z = texture2D(tD, p).x * 2.0 - 1.0; return 2.0 * nf.x * nf.y / (nf.y + nf.x - z * (nf.y - nf.x)); }
-    void main(){
-      vec3 c = texture2D(tC, u).rgb;
-      float d = lin(u), a = lin(u + vec2(px.x, 0.0)), b = lin(u - vec2(px.x, 0.0)), e = lin(u + vec2(0.0, px.y)), f = lin(u - vec2(0.0, px.y));
-      float k = max(abs(a + b - 2.0 * d), abs(e + f - 2.0 * d)) / min(d, min(min(a, b), min(e, f)));
-      float edge = smoothstep(0.03, 0.09, k) * (1.0 - 0.75 * smoothstep(60.0, 400.0, d));
-      gl_FragColor = vec4(mix(c, c * vec3(0.2, 0.16, 0.24), edge * 0.8), 1.0);
-      #include <colorspace_fragment>
-    }`,
-}));
-ink.frustumCulled = false;
-const inkCam = new THREE.Camera();
 const fx = new Particles(scene);
 const cam = new ChaseCam(camera);
 const input = new Input();
@@ -405,8 +386,7 @@ function tick(dt, now) {
   }
   world.update(frozen ? 0 : dt, cam.look, camera.position);
   if (G.state !== 'menu') updateHud(dt);
-  renderer.setRenderTarget(rt); renderer.render(scene, camera);
-  renderer.setRenderTarget(null); renderer.render(ink, inkCam);
+  renderer.render(scene, camera);
 }
 
 // ------------------------------------------------------------------ menus
@@ -459,8 +439,6 @@ if (preRoom) { $('code').value = preRoom; $('solo').style.display = 'none'; $('c
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-  const sz = renderer.getDrawingBufferSize(new THREE.Vector2());
-  rt.setSize(sz.x, sz.y); ink.material.uniforms.px.value.set(1.15 / sz.x, 1.15 / sz.y);
 }
 addEventListener('resize', resize); resize();
 placeOn(me.r, 0, course.start.s, 0, 4); cam.snap(me.r);

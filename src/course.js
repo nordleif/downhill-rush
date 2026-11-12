@@ -517,7 +517,7 @@ function scatter() {
     if (rockiness(x, z, o.gully) > 0.5) p *= 0.15;
     if (r1 > p) continue;
     const sc = (d < 28 ? 1.05 + r2 * 0.85 : 0.8 + r2 * 0.9) * (d > 60 ? 1.35 : 1);
-    const tr = { x, z, y: o.y - 0.15, sc, kind: r3 < 0.6 ? 0 : r3 < 0.9 ? 1 : 2, r: 0.3 * sc, top: o.y + 7 * sc, near: d < 60 };
+    const tr = { x, z, y: o.y - 0.15, sc, kind: r3 < 0.5 ? 0 : r3 < 0.78 ? 1 : r3 < 0.9 ? 2 : r3 < 0.95 ? 3 : 4, r: 0.3 * sc, top: o.y + 7 * sc, near: d < 60 };
     course.trees.push(tr);
     if (d < 45) addObstacle(tr);
   }

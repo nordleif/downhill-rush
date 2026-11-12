@@ -10,7 +10,7 @@ import { toon } from './toon.js';
 
 const C = h => new THREE.Color(h);
 export const DIFF_COLOR = { main: 0xf2a23a, green: 0x2fae55, blue: 0x2f7be0, black: 0x23262d };
-export const SKY = { top: C(0x3d9cf2), horizon: C(0xffe8f0), fog: C(0xd3e6fa) };
+export const SKY = { top: C(0x58aef8), horizon: C(0xffd6ea), fog: C(0xf1d9ee) };
 
 function canvasTex(w, h, draw, repeat) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -22,8 +22,8 @@ function canvasTex(w, h, draw, repeat) {
 }
 
 // ------------------------------------------------------------------ ground
-const cGrassA = C(0x86d943), cGrassB = C(0x55b83e), cMeadow = C(0xc0e84c), cDirt = C(0xf0b46e), cDirtDark = C(0x9a6238), cFloor = C(0x35883e);
-const cRock = C(0x9499a6), cRockDark = C(0x646a78), cRough = C(0x9c958c), cShore = C(0x8fb66a);
+const cGrassA = C(0x8fe04a), cGrassB = C(0x5cc445), cMeadow = C(0xc8ee55), cFloor = C(0x3f9a4a);
+const cRock = C(0xa9a6cf), cRockDark = C(0x74709c);
 const tmpC = new THREE.Color();
 function groundColor(x, z, o, out) {
   const n = fbm(x / 30 + 3, z / 30, 2), n2 = fbm(x / 7, z / 7 + 9, 2);
@@ -33,14 +33,37 @@ function groundColor(x, z, o, out) {
   out.lerp(cFloor, 0.6 * sm(0.45, 0.95, forestAt(x, z)) * (1 - meadowAt(z)));
   const rk = rockiness(x, z, o.gully);
   if (rk > 0) out.lerp(tmpC.copy(cRockDark).lerp(cRock, n2), rk);
-  out.multiplyScalar(0.95 + 0.1 * n2);
-  // The trail is a clean ribbon of dirt with a dark rim, like a drawn line.
-  if (o.w > 0.05 && o.dist < 0.7) {
-    tmpC.copy(cDirt).multiplyScalar(0.96 + 0.08 * n2).lerp(cDirtDark, sm(-0.75, 0.15, o.dist));
-    if (o.rough) tmpC.lerp(cRough, 0.5);
-    out.lerp(tmpC, (1 - sm(0.2, 0.55, o.dist)) * sm(0.3, 0.8, o.w));
-  }
-  return out;
+  return out.multiplyScalar(0.96 + 0.08 * n2);
+}
+
+// The trail is painted, not shaded: warm dirt with a dark rim, a pale racing
+// line, pebbles, and grass that bites into the edge in round scallops.
+function trailMat() {
+  const tex = canvasTex(512, 512, (g, w, h) => {
+    const rng = mulberry(31), e0 = w * (0.5 - 0.5 / 1.3), e1 = w - e0, TAU = Math.PI * 2;
+    const dot = (x, y, rx, ry, a) => { for (const dy of [-h, 0, h]) { g.beginPath(); g.ellipse(x, y + dy, rx, ry, a, 0, TAU); g.fill(); } };
+    g.fillStyle = '#a8663a'; g.fillRect(e0 - 4, 0, e1 - e0 + 8, h);
+    g.fillStyle = '#f2b36c'; g.fillRect(e0 + 24, 0, e1 - e0 - 48, h);
+    g.fillStyle = '#fbcf8f'; g.beginPath();
+    for (let y = 0; y <= h; y += 8) g.lineTo(w / 2 - 52 - 16 * Math.sin(y / h * TAU * 2), y);
+    for (let y = h; y >= 0; y -= 8) g.lineTo(w / 2 + 52 + 16 * Math.sin(y / h * TAU * 3 + 1), y);
+    g.fill();
+    for (let i = 0; i < 90; i++) {
+      g.fillStyle = rng() < 0.5 ? '#d2904f' : '#ffe2b0';
+      const r = 2 + rng() * 4; dot(e0 + 30 + rng() * (e1 - e0 - 60), rng() * h, r * 1.5, r, rng() * 3);
+    }
+    g.fillStyle = '#a8663a';
+    for (const side of [e0 + 24, e1 - 24]) for (let y = 0; y < h;) { const r = 7 + rng() * 9; dot(side, y, r, r * 1.4, 0); y += r * 2.2; }
+    g.globalCompositeOperation = 'destination-out';
+    for (const side of [e0 - 4, e1 + 4]) for (let y = 0; y < h;) { const r = 9 + rng() * 11; dot(side, y, r, r, 0); y += r * 1.25; }
+  }, true);
+  tex.wrapS = THREE.ClampToEdgeWrapping; tex.premultiplyAlpha = true; tex.anisotropy = 8;
+  const m = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex });
+  m.onBeforeCompile = sh => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '')
+      .replace('#include <color_fragment>', 'vec4 tt = texture2D(map, vMapUv); diffuseColor.rgb = vColor.rgb * (1.0 - tt.a) + tt.rgb;');
+  };
+  return m;
 }
 
 const RIB = 6; // how far the detailed trail strip reaches beyond the trail edge
@@ -90,27 +113,30 @@ function buildGround(scene, mat) {
 // cut banks at full detail, which the coarse terrain grid cannot.
 function buildTrailStrips(scene, mat) {
   const o = newSurf(), col = new THREE.Color(), P = {};
+  const U = 1.3; // the painted trail texture reaches this many half widths to each side
   for (const t of trails) {
     const rows = [];
     for (let i = 0; i < t.n; i++) rows.push(t.s[i]);
     for (const f of t.feats) if (f.type === 'kicker') rows.push(f.s1 - 0.02, f.s1 + 0.02);
     rows.sort((a, b) => a - b);
-    const NC = 15, pos = [], cl = [], idx = [];
+    const NC = 15, pos = [], cl = [], uv = [], idx = [];
     rows.forEach((s, r) => {
       poseAt(t, s, P);
-      const hw = P.hw, cx = Math.cos(P.th), cz = Math.sin(P.th);
-      const lats = [-(hw + RIB), -(hw + 3.2), -(hw + 1.2), -(hw + 0.55), -(hw + 0.15), -(hw - 0.7), -hw * 0.4, 0, hw * 0.4, hw - 0.7, hw + 0.15, hw + 0.55, hw + 1.2, hw + 3.2, hw + RIB];
+      const hw = P.hw, cx = Math.cos(P.th), cz = Math.sin(P.th), open = t.gw[P.i] < 0.6;
+      const lats = [-(hw + RIB), -(hw + 3.2), -(hw + 1.2), -hw * U, -hw, -(hw - 0.7), -hw * 0.4, 0, hw * 0.4, hw - 0.7, hw, hw * U, hw + 1.2, hw + 3.2, hw + RIB];
       for (let c = 0; c < NC; c++) {
         const x = P.x + cx * lats[c], z = P.z + cz * lats[c];
         surfaceAt(x, z, -1e9, o);
         pos.push(x, o.y - (c === 0 || c === NC - 1 ? 0.3 : 0), z);
         groundColor(x, z, o, col); cl.push(col.r, col.g, col.b);
+        uv.push(open ? -1 : 0.5 + 0.5 * lats[c] / (hw * U), s / 8);
         if (r && c) { const a = (r - 1) * NC + c - 1, b = a + 1, d = r * NC + c - 1, e = d + 1; idx.push(a, b, d, b, e, d); }
       }
     });
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.setIndex(idx); g.computeVertexNormals();
     // Split long trails so that the parts out of view can be culled.
     const m = new THREE.Mesh(g, mat); m.receiveShadow = true; scene.add(m);
@@ -176,29 +202,33 @@ const lathe = (pts, seg) => prep(new THREE.LatheGeometry(pts.map(p => new THREE.
 const LOD_AT = 115; // beyond this the simple version of a tree is drawn
 
 function buildForest(scene, quality) {
-  const mat = toon({ vertexColors: true, side: THREE.DoubleSide });
+  const mat = toon({ vertexColors: true });
   // One drooping tier of a fir: a soft bell with a rounded rim.
   const tier = (r, y, h, hi) => hi
-    ? lathe([[r * 0.25, y + h * 0.12], [r * 0.82, y + h * 0.01], [r, y + h * 0.1], [r * 0.9, y + h * 0.24], [r * 0.52, y + h * 0.62], [r * 0.2, y + h * 0.9], [0.001, y + h]], 12)
+    ? lathe([[r * 0.3, y + h * 0.14], [r * 0.7, y + h * 0.02], [r * 0.93, y + h * 0.04], [r, y + h * 0.16], [r * 0.96, y + h * 0.32], [r * 0.8, y + h * 0.56], [r * 0.52, y + h * 0.8], [r * 0.24, y + h * 0.95], [0.001, y + h]], 18)
     : lathe([[r * 0.95, y + h * 0.05], [r * 0.5, y + h * 0.6], [0.001, y + h]], 6);
   // A tall bare trunk with the branches high up, so the trail runs under the trees.
   const fir = (r, h, tiers, dark, light, hi) => {
-    const parts = [paint(prep(new THREE.CylinderGeometry(0.2, 0.44, h * 0.5, hi ? 9 : 5, 1, true).translate(0, h * 0.25, 0)), 0x6a4630, 0x9a6c43)];
-    if (hi) parts.push(paint(lathe([[0.75, 0], [0.5, 0.25], [0.42, 0.7]], 9), 0x5c3c28, 0x6a4630)); // flared foot
-    const n = hi ? tiers : 2, hh = h * (hi ? 0.3 : 0.4), y0 = h * 0.36, step = (h - y0 - hh) / (n - 1);
+    const parts = [paint(prep(new THREE.CylinderGeometry(0.3, 0.6, h * 0.5, hi ? 12 : 5, 1, true).translate(0, h * 0.25, 0)), 0x7a4a38, 0xb87a4e)];
+    if (hi) parts.push(paint(lathe([[1.0, 0], [0.72, 0.22], [0.58, 0.7]], 12), 0x6a3f33, 0x7a4a38)); // flared foot
+    const n = hi ? tiers : 2, hh = h * (hi ? 0.34 : 0.42), y0 = h * 0.34, step = (h - y0 - hh) / (n - 1);
     for (let i = 0; i < n; i++) parts.push(paint(tier(r * (1 - i / n * 0.6), y0 + i * step, hh, hi), dark, light));
     return mergeGeometries(parts);
   };
-  const leafy = hi => {
-    const blob = (r, x, y, z) => prep(hi ? new THREE.SphereGeometry(r, 12, 9) : new THREE.IcosahedronGeometry(r, 1)).translate(x, y, z);
+  // Leafy trees are a few big soft balls on a fat trunk, in several colours.
+  const leafy = (hi, dark, light) => {
+    const blob = (r, x, y, z) => prep(hi ? new THREE.SphereGeometry(r, 16, 11) : new THREE.IcosahedronGeometry(r, 1)).translate(x, y, z);
     const parts = [
-      paint(prep(new THREE.CylinderGeometry(0.17, 0.32, 3, hi ? 9 : 5, 1, true).translate(0, 1.5, 0)), 0x7a5a3c, 0x9a744c),
-      paint(blob(1.9, 0, 4.2, 0), 0x4fa83a, 0x9fe04e), paint(blob(1.4, 1.15, 5.1, 0.4), 0x5fb83e, 0xb4ea58),
+      paint(prep(new THREE.CylinderGeometry(0.26, 0.5, 3.2, hi ? 12 : 5, 1, true).translate(0, 1.6, 0)), 0x7a4a38, 0xb87a4e),
+      paint(blob(2.2, 0, 4.6, 0), dark, light), paint(blob(1.6, 1.3, 5.6, 0.4), dark, light),
     ];
-    if (hi) parts.push(paint(blob(1.3, -0.95, 5, -0.5), 0x4fa83a, 0xa6e250), paint(blob(1.15, 0.1, 6, -0.2), 0x6cc444, 0xc2f060));
+    if (hi) parts.push(paint(blob(1.5, -1.1, 5.5, -0.5), dark, light), paint(blob(1.3, 0.1, 6.7, -0.2), dark, light), paint(lathe([[0.85, 0], [0.6, 0.2], [0.48, 0.6]], 12), 0x6a3f33, 0x7a4a38));
     return mergeGeometries(parts);
   };
-  const make = hi => [fir(2.4, 9.5, 3, 0x1a6a3c, 0x5cc04e, hi), fir(1.9, 11.5, 4, 0x136042, 0x44aa5a, hi), leafy(hi)];
+  const make = hi => [
+    fir(2.7, 9.5, 3, 0x12806a, 0x6fe08a, hi), fir(2.2, 11.5, 4, 0x1f7a3e, 0x7ad24e, hi),
+    leafy(hi, 0x58b836, 0xc4f25a), leafy(hi, 0xe86a9c, 0xffc4dc), leafy(hi, 0xf08a2a, 0xffd65a),
+  ];
   const hiG = make(true), loG = make(false);
   const rng = mulberry(7);
   const list = course.trees.filter(t => quality > 0 || t.near || rng() < 0.5);
@@ -206,7 +236,7 @@ function buildForest(scene, quality) {
     d.position.set(t.x, t.y, t.z); d.rotation.y = t.x * 7.3 + t.z; d.scale.setScalar(t.sc);
     const v = 0.86 + 0.26 * fbm(t.x / 3, t.z / 3, 1), w = fbm(t.z / 2, t.x / 2, 1); col.setRGB(v * (0.9 + 0.2 * w), v, v * (1.02 - 0.22 * w)); return true;
   };
-  for (let k = 0; k < 3; k++) {
+  for (let k = 0; k < 5; k++) {
     const near = list.filter(t => t.kind === k && t.near);
     instanced(scene, hiG[k], mat, near, place, { band: 80, maxDist: LOD_AT, cast: quality > 0 });
     instanced(scene, loG[k], mat, near, place, { band: 80, minDist: LOD_AT });
@@ -232,7 +262,7 @@ function buildRocks(scene) {
 }
 
 function buildPlants(scene, quality) {
-  const rng = mulberry(99), o = newSurf(), P = {}, tufts = [], flowers = [], bushes = [];
+  const rng = mulberry(99), o = newSurf(), P = {}, tufts = [], flowers = [], bushes = [], shrooms = [];
   const FC = [0xffffff, 0xffd84a, 0xff7ab8, 0xb58cff, 0xff9a3c, 0xfff2a8];
   const tryAdd = (x, z, flowerP) => {
     surfaceAt(x, z, -1e9, o);
@@ -241,6 +271,7 @@ function buildPlants(scene, quality) {
     const q = rng();
     if (q < flowerP) { it.c = FC[Math.floor(rng() * FC.length)]; flowers.push(it); }
     else if (q < flowerP + 0.14) bushes.push(it);
+    else if (q < flowerP + 0.2) shrooms.push(it);
     else tufts.push(it);
   };
   const step = quality > 0 ? 0.8 : 1.6;
@@ -272,6 +303,16 @@ function buildPlants(scene, quality) {
     d.position.set(it.x, it.y - 0.02, it.z); d.rotation.set((it.r - 0.5) * 0.5, it.r * 6.28, 0); d.scale.setScalar(1 + it.r * 0.9);
     col.setHex(it.c); return true;
   }, { band: 60, maxDist: 170 });
+  // Fat red toadstools with white spots.
+  const sparts = [
+    paint(lathe([[0.11, 0], [0.085, 0.2], [0.1, 0.36]], 10), 0xf3e6cf, 0xfff6e6),
+    paint(lathe([[0.1, 0.34], [0.33, 0.3], [0.36, 0.36], [0.32, 0.47], [0.2, 0.58], [0.001, 0.63]], 14), 0xd8322e, 0xff5a4a),
+  ];
+  for (let i = 0; i < 6; i++) { const a = i * 1.05, rr = i < 5 ? 0.22 : 0; sparts.push(paint(prep(new THREE.SphereGeometry(0.055, 7, 5).scale(1, 0.5, 1).translate(Math.cos(a) * rr, i < 5 ? 0.5 : 0.625, Math.sin(a) * rr)), 0xffffff)); }
+  instanced(scene, mergeGeometries(sparts), mat, shrooms, (it, d, col) => {
+    d.position.set(it.x, it.y - 0.02, it.z); d.rotation.set((it.r - 0.5) * 0.3, it.r * 6.28, 0); d.scale.setScalar(0.9 + it.r * 1.6);
+    col.setRGB(1, 1, 1); return true;
+  }, { band: 60, maxDist: 200, cast: true });
   const bush = mergeGeometries([
     paint(prep(new THREE.SphereGeometry(0.55, 10, 7).scale(1, 0.8, 1).translate(0, 0.32, 0)), 0x2f8a3c, 0x86d44c),
     paint(prep(new THREE.SphereGeometry(0.4, 9, 6).translate(0.42, 0.3, 0.12)), 0x2f8a3c, 0x7acb48),
@@ -541,10 +582,10 @@ function buildSky(scene) {
 
 // ------------------------------------------------------------------ assembly
 export function buildWorld(scene, quality) {
-  scene.fog = new THREE.Fog(SKY.fog, 300, 9000);
+  scene.fog = new THREE.Fog(SKY.fog, 140, 5200);
   const sunDir = new THREE.Vector3(0.45, 0.72, 0.35).normalize();
-  const hemi = new THREE.HemisphereLight(0xdcecff, 0x9ccf6a, 1.75);
-  const sun = new THREE.DirectionalLight(0xfff2d6, 2.3);
+  const hemi = new THREE.HemisphereLight(0xe4e6ff, 0xb39ae0, 1.75); // lilac from below gives purple shadows
+  const sun = new THREE.DirectionalLight(0xffe7bd, 2.5);
   scene.add(hemi, sun, sun.target);
   if (quality > 0) {
     sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
@@ -554,7 +595,12 @@ export function buildWorld(scene, quality) {
   const detail = canvasTex(256, 256, (g, w, h) => {
     g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
     const rng = mulberry(2);
-    for (let i = 0; i < 900; i++) { const v = 240 + rng() * 15; g.fillStyle = `rgba(${v},${v},${v},0.7)`; g.beginPath(); g.arc(rng() * w, rng() * h, 1 + rng() * 4, 0, 7); g.fill(); }
+    g.fillStyle = '#eef3e6'; g.fillRect(0, 0, w, h);
+    g.lineCap = 'round'; g.lineWidth = 2.2;
+    for (let i = 0; i < 260; i++) {
+      const x = rng() * w, y = rng() * h, r = 3 + rng() * 4; g.strokeStyle = rng() < 0.5 ? '#ffffff' : '#d3e0c4';
+      g.beginPath(); g.moveTo(x - r, y); g.lineTo(x - r * 0.4, y - r); g.moveTo(x, y); g.lineTo(x, y - r * 1.3); g.moveTo(x + r, y); g.lineTo(x + r * 0.4, y - r); g.stroke();
+    }
   }, true);
   const groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
   // World-space detail texture so that strips and terrain match exactly.
@@ -562,7 +608,7 @@ export function buildWorld(scene, quality) {
   groundMat.onBeforeCompile = sh => {
     sh.vertexShader = sh.vertexShader.replace('#include <uv_vertex>', '#include <uv_vertex>\n vMapUv = position.xz * 0.16;');
   };
-  buildGround(scene, groundMat); buildTrailStrips(scene, groundMat); buildFar(scene);
+  buildGround(scene, groundMat); buildTrailStrips(scene, trailMat()); buildFar(scene);
   buildDecks(scene); buildForest(scene, quality); buildRocks(scene); buildPlants(scene, quality);
   buildArches(scene); buildSigns(scene); buildMarkers(scene); buildRoots(scene); buildWater(scene);
   const sky = buildSky(scene);
