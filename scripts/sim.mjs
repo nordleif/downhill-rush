@@ -44,7 +44,7 @@ function ride(name, prefer, opts = {}) {
 ride('green', 'green');
 ride('blue', 'blue');
 ride('black', 'black');
-ride('coast', 'green', { pedalTo: 0, grip: 7 });
+ride('coast', 'green', { pedalTo: 4, grip: 7 });
 ride('tricks', 'black', { tricks: true, pedalTo: 13 });
 ride('keys', 'blue', { digital: true });
 ride('keysB', 'black', { digital: true });

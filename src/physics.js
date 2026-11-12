@@ -99,9 +99,9 @@ function groundStep(r, inp, dt, ev) {
   const sf = clamp(hx * fx + hz * fz, -1.2, 1.2), sr = clamp(hx * rx + hz * rz, -1, 1);
   let a = -G * sf / Math.sqrt(1 + sf * sf);
   const roll = wood ? 0.2 : 0.25 + 1.9 * off + (S.rough ? 0.45 : 0);
-  a -= roll * Math.min(1, f / 0.3) + (0.0042 + 0.012 * (wood ? 0 : off)) * f * f;
+  a -= roll * Math.min(1, f / 0.3) + (0.0068 + 0.012 * (wood ? 0 : off)) * f * f;
   r.pedaling = 0;
-  if (inp.pedal > 0) { a += 3.4 * clamp(1 - (f - 6) / 13, 0, 1) * inp.pedal; r.pedaling = inp.pedal; }
+  if (inp.pedal > 0) { a += (3.4 + 1.6 * clamp(1 - f / 5, 0, 1)) * clamp(1 - (f - 6) / 13, 0, 1) * inp.pedal; r.pedaling = inp.pedal; }
   r.braking = inp.brake;
   if (inp.brake > 0) a -= 10 * inp.brake;
   f += a * dt; if (f < 0) f = 0;
@@ -130,11 +130,10 @@ function groundStep(r, inp, dt, ev) {
     return;
   }
   r.stuck = 0;
+  // Vertical speed comes from the slope over the last half metre, not from one
+  // frame, so small steps and ripples in the ground do not kick the bike up.
   let vyG = clamp((S2.y - r.y) / dt, -30, 30);
-  if (vyG > 3) { // a small step is soaked up by the suspension, a real ramp is not
-    const back = (S2.y - hAt(nx - fx * 0.6, nz - fz * 0.6, yR)) / 0.6;
-    vyG = Math.min(vyG, Math.max(0, back) * f * 1.1 + 1);
-  }
+  if (sp > 1) vyG = clamp((S2.y - hAt(nx - r.vx / sp * 0.5, nz - r.vz / sp * 0.5, yR)) / 0.5 * sp, -30, 30);
   const vyB = r.vy - G * dt, yb = r.y + vyB * dt;
   r.x = nx; r.z = nz;
   if (inp.jump) { r.y = Math.max(S2.y, yb); r.vy = Math.max(vyG, 0) * 0.6 + HOP; takeoff(r, ev, true); }

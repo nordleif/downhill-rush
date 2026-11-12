@@ -7,9 +7,9 @@
 import { fbm, mulberry, clamp, sm } from './noise.js';
 
 export const RAD = Math.PI / 180;
-const DOWN = 0.17;          // average fall-line slope of the mountain
+export const DOWN = 0.34;          // average fall-line slope of the mountain
 const ZB = -2330;           // below this the mountain levels out into the valley
-const GMIN = 0.045, GMAX = 0.36; // trail grade limits
+const GMIN = 0.045, GMAX = 0.62; // trail grade limits
 const KBANK = 4.5;          // berm tilt per unit of curvature
 export const LAKE_Y = DOWN * (ZB - 130) - 3;
 export const VALLEY_Z = ZB;
@@ -35,11 +35,30 @@ export function gullyDepth(x, z) {
   return m;
 }
 
+// The mountain falls in steps: long steep pitches broken by short benches.
+const STEP = 190, BENCH = 0.3, BENCH_G = 0.05, NST = 512;
+const stepTab = new Float64Array(NST + 1);
+{
+  const steep = (DOWN - BENCH * BENCH_G) / (1 - BENCH);
+  for (let i = 0; i < NST; i++) {
+    const q = (i + 0.5) / NST, b = sm(0, 0.07, q) * (1 - sm(BENCH, BENCH + 0.07, q));
+    stepTab[i + 1] = stepTab[i] - (steep + (BENCH_G - steep) * b - DOWN) * STEP / NST;
+  }
+  const res = stepTab[NST];
+  for (let i = 0; i <= NST; i++) stepTab[i] -= res * i / NST;
+}
+const stepWarp = (x, z) => 0.5 * fbm(x / 260 + 7.1, z / 420 + 2.3, 2);
+const STEP_PH = 0.96 - (-16 / STEP + stepWarp(0, 16));
+function stepOff(x, z) {
+  const u = -z / STEP + stepWarp(x, z) + STEP_PH, f = (u - Math.floor(u)) * NST, i = f | 0;
+  return (stepTab[i] + (stepTab[i + 1] - stepTab[i]) * (f - i)) * sm(ZB - 60, ZB + 160, z);
+}
+
 // Large-scale mountain shape without ravines. Trail heights follow this.
 export function baseNG(x, z) {
   const ze = z > ZB ? z : ZB - 130 * (1 - Math.exp((z - ZB) / 130));
   let y = DOWN * ze;
-  y += 4.5 * Math.sin(z * 0.021 + 0.6);
+  y += stepOff(x, z);
   y += 16 * (fbm(x / 230 + 3.3, z / 310 + 1.7, 3) - 0.5);
   const ax = Math.abs(x - 30) - 300;
   if (ax > 0) y += 0.0006 * ax * ax / (1 + ax / 900);
@@ -118,7 +137,7 @@ function smoothArr(a, r) {
   return o;
 }
 
-const WOOD_HW = { main: 2.3, green: 2.6, blue: 1.8, black: 1.2 };
+const WOOD_HW = { main: 2.1, green: 2.4, blue: 1.7, black: 1.2 };
 
 function finalize(P, y0, g0 = 0.1) {
   const n = P.x.length;
@@ -148,7 +167,7 @@ function finalize(P, y0, g0 = 0.1) {
   for (let i = 1; i < n; i++) {
     const ds = t.s[i] - t.s[i - 1];
     const want = (raw[i - 1] - raw[i]) / ds + 0.07 * (t.y[i - 1] - raw[i - 1]);
-    g = clamp(clamp(want, g - 0.018 * ds, g + 0.018 * ds), P.gm[i], GMAX);
+    g = clamp(clamp(want, g - 0.024 * ds, g + 0.024 * ds), P.gm[i], GMAX);
     t.y[i] = t.y[i - 1] - g * ds;
   }
   t.g1 = g;
@@ -211,7 +230,7 @@ export const course = {
   finishP: 0, finish: null, start: null, meadow: [0, 0], bounds: null,
 };
 
-const W = { main: 3.0, green: 3.6, blue: 2.6, black: 1.9 };
+const W = { main: 2.3, green: 2.8, blue: 2.0, black: 1.5 };
 
 function layout() {
   const add = (P, y0, g0) => { const t = finalize(P, y0, g0); t.idx = trails.length; trails.push(t); return t; };
@@ -280,7 +299,7 @@ function layout() {
 
   const f2 = fork(m2, [
     { name: 'Sawmill', diff: 'blue', build: P => P
-      .go(30).kicker(1.4, 6).go(30).arc(60, 22).go(30).arc(-120, 14)
+      .go(30).kicker(1.4, 6).go(52).arc(60, 22).go(30).arc(-120, 14)
       .go(20).ramp(1.5, 7, 1.7).go(33).arc(120, 14).go(30).arc(-60, 22)
       .go(12).table(1.3, 6, 5, 7).go(22).arc(-40, 30).arc(80, 30).arc(-40, 30)
       .skinny(20, 1.2, 0.9).go(31) },
@@ -288,9 +307,9 @@ function layout() {
       .arc(-60, 35).go(85).arc(120, 24).go(12).roller(0.5).roller(0.5).go(12)
       .arc(-120, 24).go(50).arc(110, 26).go(10) },
     { name: 'Widowmaker', diff: 'black', build: P => P
-      .arc(55, 24).go(165).arc(-55, 20)
-      .go(14).ramp(2.4, 8, 1.8).go(44).drop(12, 1.7).go(26)
-      .arc(-60, 18).go(72).arc(60, 18).kicker(1.7, 6).go(4) },
+      .arc(55, 24).go(192).arc(-55, 20)
+      .go(14).ramp(2.4, 8, 1.8).go(72).drop(12, 1.7).go(50)
+      .arc(-60, 18).go(98).arc(60, 18).kicker(1.7, 6).go(4) },
   ]);
 
   // 3. Valley View: open meadow, big sweepers, a three-jump rhythm line.
@@ -304,14 +323,14 @@ function layout() {
       .arc(-60, 26).go(20).kicker(1.3, 6).go(112).arc(120, 14).go(70).arc(-60, 24)
       .go(10).ramp(1.6, 7, 1.7).go(35).arc(40, 30).arc(-40, 30).go(20) },
     { name: 'Cliffhanger', diff: 'black', build: P => P
-      .arc(50, 24).go(40).arc(-50, 22)
-      .go(10).ramp(2.6, 8, 1.8).go(46).skinny(26, 1.6, 0.75).go(8).drop(12, 1.7).go(24)
+      .arc(50, 24).go(22).arc(-50, 22)
+      .go(10).ramp(2.6, 8, 1.8).go(64).skinny(26, 1.6, 0.75).go(14).drop(12, 1.7).go(30)
       .arc(-55, 20).go(14).kicker(1.8, 6).go(30) },
   ]);
 
   // 4. Final Sprint.
   const m4 = cont(f3, 'Final Sprint', P => P
-    .w(3.4).go(30).arc(-25, 60).arc(50, 60).arc(-25, 60)
+    .w(2.8).go(30).arc(-25, 60).arc(50, 60).arc(-25, 60)
     .go(20).kicker(1.6, 7).go(60).mark('finish').grade(0.01).go(75));
   course.finishP = m4.p0 + m4.finish;
   course.finish = { t: m4.idx, s: m4.finish };
@@ -402,7 +421,8 @@ export function surfaceAt(x, z, yRef, o) {
         best = d - hw; o.trail = e >>> 16; o.i = i; o.s = s; o.lat = lat; o.hw = hw; o.th = t.th[i]; o.kap = t.kap[i]; o.rough = t.rg[i];
         gw = t.gw[i] + (t.gw[i + 1] - t.gw[i]) * u;
       }
-      for (let q = 0; q < 2; q++) {
+      // Decks are only taken from the piece the point really lies on.
+      for (let q = 0; q < 2 && Math.abs(ue - u) * L < 1; q++) {
         const di = t.di[i + q]; if (di < 0 || (q && di === t.di[i])) continue;
         const dk = t.decks[di];
         if (s < dk.s0 || s > dk.s1 || al > dk.hw + (dk.rails ? 0.8 : 0)) continue;
@@ -473,6 +493,7 @@ export function obstaclesNear(x, z, r, out) {
   return out;
 }
 
+export const forestAt = (x, z) => 0.25 + 0.75 * sm(0.32, 0.5, fbm(x / 80 + 5, z / 80, 2));
 export const rockiness = (x, z, gd) => sm(0.6, 2.6, gd);
 export const meadowAt = z => sm(course.meadow[0] + 40, course.meadow[0] - 20, z) * sm(course.meadow[1] - 40, course.meadow[1] + 20, z);
 
@@ -487,14 +508,16 @@ function scatter() {
     surfaceAt(x, z, -1e9, o);
     let d = o.dist;
     if (o.trail < 0) d = locate(x, z, L).dist - 4;
-    if (d < 3.8 || o.gully > 1.2) continue;
-    const forest = 0.25 + 0.75 * sm(0.32, 0.5, fbm(x / 80 + 5, z / 80, 2));
-    let p = d < 60 ? 0.5 * forest : d < 150 ? 0.22 : 0.1;
+    if (d < 2.7 || o.gully > 1.2) continue;
+    if (course.signs.some(g => (g.x - x) ** 2 + (g.z - z) ** 2 < 64)) continue; // keep the fork signs in view
+    const forest = forestAt(x, z);
+    // Thick forest right up to the trail, thinner far away where nobody looks.
+    let p = d < 28 ? 0.2 + 0.72 * forest : d < 60 ? 0.55 * forest : d < 150 ? 0.22 : 0.1;
     p *= 1 - 0.85 * meadowAt(z);
     if (rockiness(x, z, o.gully) > 0.5) p *= 0.15;
     if (r1 > p) continue;
-    const sc = (0.8 + r2 * 0.9) * (d > 60 ? 1.35 : 1);
-    const tr = { x, z, y: o.y - 0.15, sc, kind: r3 < 0.72 ? 0 : r3 < 0.9 ? 1 : 2, r: 0.3 * sc, top: o.y + 7 * sc, near: d < 60 };
+    const sc = (d < 28 ? 1.05 + r2 * 0.85 : 0.8 + r2 * 0.9) * (d > 60 ? 1.35 : 1);
+    const tr = { x, z, y: o.y - 0.15, sc, kind: r3 < 0.6 ? 0 : r3 < 0.9 ? 1 : 2, r: 0.3 * sc, top: o.y + 7 * sc, near: d < 60 };
     course.trees.push(tr);
     if (d < 45) addObstacle(tr);
   }

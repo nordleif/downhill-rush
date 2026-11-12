@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-  course, trails, surfaceAt, newSurf, poseAt, deckY, GULLIES, gullyX, baseNG, LAKE_Y, VALLEY_Z, rockiness, meadowAt,
+  course, trails, surfaceAt, newSurf, poseAt, deckY, GULLIES, gullyX, baseNG, LAKE_Y, VALLEY_Z, rockiness, meadowAt, forestAt, DOWN,
 } from './course.js';
 import { fbm, mulberry, clamp, sm } from './noise.js';
 
@@ -21,22 +21,25 @@ function canvasTex(w, h, draw, repeat) {
 }
 
 // ------------------------------------------------------------------ ground
-const cGrassA = C(0x74c442), cGrassB = C(0x3d9440), cMeadow = C(0xa6d64e), cDirt = C(0xd9a165), cDirtDark = C(0xa97445);
+const cGrassA = C(0x7ccf3f), cGrassB = C(0x46a53c), cMeadow = C(0xb4e04a), cDirt = C(0xe2ab6c), cDirtDark = C(0x8a5a36), cFloor = C(0x2f7a3c);
 const cRock = C(0x9499a6), cRockDark = C(0x646a78), cRough = C(0x9c958c), cShore = C(0x8fb66a);
 const tmpC = new THREE.Color();
 function groundColor(x, z, o, out) {
   const n = fbm(x / 30 + 3, z / 30, 2), n2 = fbm(x / 7, z / 7 + 9, 2);
   out.copy(cGrassB).lerp(cGrassA, sm(0.3, 0.7, n));
   out.lerp(cMeadow, clamp(meadowAt(z) * 0.7 * n2 + 0.12 * n2, 0, 1));
+  // Shady forest floor under the trees.
+  out.lerp(cFloor, 0.6 * sm(0.45, 0.95, forestAt(x, z)) * (1 - meadowAt(z)));
   const rk = rockiness(x, z, o.gully);
   if (rk > 0) out.lerp(tmpC.copy(cRockDark).lerp(cRock, n2), rk);
-  if (o.w > 0.05) {
-    const al = Math.abs(o.lat) / Math.max(1, o.hw);
-    tmpC.copy(cDirt).lerp(cDirtDark, clamp(sm(0.45, 1.1, al) * 0.75 + (n2 - 0.5) * 0.35, 0, 1));
-    if (o.rough) tmpC.lerp(cRough, 0.55);
-    out.lerp(tmpC, sm(0.4, 0.92, o.w));
+  out.multiplyScalar(0.9 + 0.2 * n2);
+  // The trail is a clean ribbon of dirt with a dark rim, like a drawn line.
+  if (o.w > 0.05 && o.dist < 0.7) {
+    tmpC.copy(cDirt).multiplyScalar(0.93 + 0.14 * n2).lerp(cDirtDark, sm(-0.75, 0.15, o.dist));
+    if (o.rough) tmpC.lerp(cRough, 0.5);
+    out.lerp(tmpC, (1 - sm(0.2, 0.55, o.dist)) * sm(0.3, 0.8, o.w));
   }
-  return out.multiplyScalar(0.88 + 0.24 * n2);
+  return out;
 }
 
 const RIB = 6; // how far the detailed trail strip reaches beyond the trail edge
@@ -91,11 +94,11 @@ function buildTrailStrips(scene, mat) {
     for (let i = 0; i < t.n; i++) rows.push(t.s[i]);
     for (const f of t.feats) if (f.type === 'kicker') rows.push(f.s1 - 0.02, f.s1 + 0.02);
     rows.sort((a, b) => a - b);
-    const NC = 11, pos = [], cl = [], idx = [];
+    const NC = 15, pos = [], cl = [], idx = [];
     rows.forEach((s, r) => {
       poseAt(t, s, P);
       const hw = P.hw, cx = Math.cos(P.th), cz = Math.sin(P.th);
-      const lats = [-(hw + RIB), -(hw + 3.2), -(hw + 1.2), -hw, -hw * 0.5, 0, hw * 0.5, hw, hw + 1.2, hw + 3.2, hw + RIB];
+      const lats = [-(hw + RIB), -(hw + 3.2), -(hw + 1.2), -(hw + 0.55), -(hw + 0.15), -(hw - 0.7), -hw * 0.4, 0, hw * 0.4, hw - 0.7, hw + 0.15, hw + 0.55, hw + 1.2, hw + 3.2, hw + RIB];
       for (let c = 0; c < NC; c++) {
         const x = P.x + cx * lats[c], z = P.z + cz * lats[c];
         surfaceAt(x, z, -1e9, o);
@@ -118,7 +121,7 @@ function buildFar(scene) {
   const nx = Math.round((x1 - x0) / G) + 1, nz = Math.round((z1 - z0) / G) + 1;
   const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, nx - 1, nz - 1); g.rotateX(-Math.PI / 2);
   const p = g.attributes.position, cl = new Float32Array(p.count * 3), col = new THREE.Color();
-  const cF = C(0x3f8f45), cF2 = C(0x5aa84c), cR = C(0x7d8494), cS = C(0xffffff);
+  const cF = C(0x3a9148), cF2 = C(0x62b34e), cR = C(0x8088a0), cS = C(0xffffff);
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i) + (x0 + x1) / 2, z = p.getZ(i) + (z0 + z1) / 2;
     const n = fbm(x / 500, z / 500, 4);
@@ -127,13 +130,13 @@ function buildFar(scene) {
     const inside = x > B.x0 + 30 && x < B.x1 - 30 && z > B.z0 + 30 && z < B.z1 - 30;
     if (inside) y -= 45;
     p.setXYZ(i, x, y, z);
-    const rel = y - 0.17 * Math.max(z, VALLEY_Z - 130);
+    const rel = y - DOWN * Math.max(z, VALLEY_Z - 130);
     col.copy(cF).lerp(cF2, fbm(x / 160, z / 160, 2));
-    col.lerp(cR, sm(260, 460, rel + n * 160)); col.lerp(cS, sm(560, 760, rel + n * 220));
+    col.lerp(cR, sm(300, 380, rel + n * 160)); col.lerp(cS, sm(600, 660, rel + n * 220));
     cl[i * 3] = col.r; cl[i * 3 + 1] = col.g; cl[i * 3 + 2] = col.b;
   }
   g.setAttribute('color', new THREE.BufferAttribute(cl, 3)); g.computeVertexNormals();
-  scene.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })));
+  scene.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true })));
   const lake = new THREE.Mesh(new THREE.PlaneGeometry(5000, 1500).rotateX(-Math.PI / 2),
     new THREE.MeshLambertMaterial({ color: 0x3fa9e6, emissive: 0x0e3f66 }));
   lake.position.set(0, LAKE_Y, VALLEY_Z - 620); scene.add(lake);
@@ -169,10 +172,11 @@ const prep = g => { const n = g.index ? g.toNonIndexed() : g; n.deleteAttribute(
 function buildForest(scene, quality) {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const pine = (r, h, layers, dark, light) => {
-    const parts = [paint(prep(new THREE.CylinderGeometry(0.16, 0.3, h * 0.38, 5, 1, true).translate(0, h * 0.19, 0)), 0x6b4a2f, 0x7d5a3a)];
+    // A tall bare trunk with the branches high up, so the trail runs under the trees.
+    const parts = [paint(prep(new THREE.CylinderGeometry(0.2, 0.42, h * 0.5, 6, 1, true).translate(0, h * 0.25, 0)), 0x5e3f28, 0x8a5f3c)];
     for (let i = 0; i < layers; i++) {
-      const f = i / layers, rr = r * (1 - f * 0.72), hh = h * 0.42 * (1 - f * 0.3);
-      parts.push(paint(prep(new THREE.ConeGeometry(rr, hh, 6, 1, i > 0).translate(0, h * (0.24 + f * 0.56) + hh / 2, 0).rotateY(i * 0.7)), dark, light));
+      const f = i / layers, rr = r * (1 - f * 0.72), hh = h * 0.36 * (1 - f * 0.3);
+      parts.push(paint(prep(new THREE.ConeGeometry(rr, hh, 7, 1, i > 0).translate(0, h * (0.36 + f * 0.46) + hh / 2, 0).rotateY(i * 0.7)), dark, light));
     }
     return mergeGeometries(parts);
   };
@@ -182,13 +186,13 @@ function buildForest(scene, quality) {
     paint(prep(new THREE.IcosahedronGeometry(1.25, 0).rotateY(1).translate(0.9, 4.6, 0.4)), 0x6fbd42, 0xb5e25a),
     paint(prep(new THREE.IcosahedronGeometry(1.15, 0).rotateY(2).translate(-0.8, 4.3, -0.5)), 0x58a53a, 0x9fd24c),
   ]);
-  const geos = [pine(2.1, 7, 3, 0x1f6b3a, 0x4fa64a), pine(1.6, 8.6, 4, 0x175c3a, 0x3d9450), round()];
+  const geos = [pine(2.3, 9.5, 3, 0x1c6e3c, 0x58b84c), pine(1.8, 11.5, 4, 0x145f3e, 0x40a056), round()];
   const rng = mulberry(7);
   const list = course.trees.filter(t => quality > 0 || t.near || rng() < 0.5);
   for (let k = 0; k < 3; k++) {
     for (const near of [true, false]) instanced(scene, geos[k], mat, list.filter(t => t.kind === k && t.near === near), (t, d, col) => {
       d.position.set(t.x, t.y, t.z); d.rotation.y = t.x * 7.3 + t.z; d.scale.setScalar(t.sc);
-      const v = 0.82 + 0.3 * fbm(t.x / 3, t.z / 3, 1); col.setRGB(v, v, v * 0.96); return true;
+      const v = 0.8 + 0.34 * fbm(t.x / 3, t.z / 3, 1), w = fbm(t.z / 2, t.x / 2, 1); col.setRGB(v * (0.86 + 0.28 * w), v, v * (1.04 - 0.3 * w)); return true;
     }, { cast: quality > 0 && near });
   }
 }
