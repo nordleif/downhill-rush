@@ -43,7 +43,7 @@ const ink = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMateri
       float d = lin(u), a = lin(u + vec2(px.x, 0.0)), b = lin(u - vec2(px.x, 0.0)), e = lin(u + vec2(0.0, px.y)), f = lin(u - vec2(0.0, px.y));
       float k = max(abs(a + b - 2.0 * d), abs(e + f - 2.0 * d)) / min(d, min(min(a, b), min(e, f)));
       float edge = smoothstep(0.03, 0.09, k) * (1.0 - 0.75 * smoothstep(60.0, 400.0, d));
-      gl_FragColor = vec4(mix(c, c * vec3(0.16, 0.14, 0.2), edge * 0.85), 1.0);
+      gl_FragColor = vec4(mix(c, c * vec3(0.2, 0.16, 0.24), edge * 0.8), 1.0);
       #include <colorspace_fragment>
     }`,
 }));
@@ -460,7 +460,7 @@ function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   const sz = renderer.getDrawingBufferSize(new THREE.Vector2());
-  rt.setSize(sz.x, sz.y); ink.material.uniforms.px.value.set(1.4 / sz.x, 1.4 / sz.y);
+  rt.setSize(sz.x, sz.y); ink.material.uniforms.px.value.set(1.15 / sz.x, 1.15 / sz.y);
 }
 addEventListener('resize', resize); resize();
 placeOn(me.r, 0, course.start.s, 0, 4); cam.snap(me.r);
