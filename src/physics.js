@@ -27,6 +27,7 @@ export function newRider() {
     pitch: 0, lean: 0, susp: 0, suspV: 0, crank: 0, wheel: 0,
     surf: 1, w: 1, trail: 0, s: 0, lat: 0, kap: 0, deck: null, slide: 0, braking: 0, pedaling: 0,
     safeT: 0, safeS: 9, clear: 0, stuck: 0, zone: 0,
+    feat: null, featClear: 0, tryKey: -1, tries: 0, // the challenge being ridden, and failed attempts at it
     bike: NEUTRAL, // stats of the bike being ridden, see bikes.js
   };
 }
@@ -42,7 +43,7 @@ export function placeOn(r, ti, s, lat = 0, speed = 0) {
   r.vx = Math.sin(PO.th) * speed; r.vz = -Math.cos(PO.th) * speed; r.vy = 0; r.speed = speed;
   r.ground = true; r.airT = 0; r.spin = r.flip = r.spinV = r.flipV = 0; r.trick = 0; r.trickT = 0;
   r.crashed = false; r.crashT = 0; r.steer = 0; r.lean = 0; r.pitch = 0; r.tum = 0; r.susp = 0; r.suspV = 0;
-  r.trail = ti; r.s = s; r.safeT = ti; r.safeS = s;
+  r.trail = ti; r.s = s; r.safeT = ti; r.safeS = s; r.feat = null;
 }
 
 function crash(r, ev, why) {
@@ -53,15 +54,60 @@ function crash(r, ev, why) {
   ev.push({ t: 'crash', why });
 }
 
-// Put the rider back on the trail close to where things went wrong.
+// A jump, plank, beam or boulder gap that covers trail distance s, or starts
+// within `pre` metres ahead of it. Bridges are only something to stay clear of.
+function challengeAt(t, s, pre) {
+  for (const f of t.feats) if ((f.type === 'kicker' || f.type === 'table') && s > f.s0 - pre && s < f.s1 + 2) return f;
+  for (const d of t.decks) if (!d.start && s > d.s0 - pre && s < d.s1 + 2) return d.type === 'bridge' ? { s0: d.s0, s1: d.s1, pass: true } : d;
+  for (const z of t.zones) if (z.kind === 'squeeze' && s > z.s0 - pre && s < z.s1 + 2) return z;
+  return null;
+}
+
+// Speed a rider who lets the bike run would have at trail distance s: gravity,
+// drag and easy pedalling along the trail, held back by the corners on the way.
+const runCache = new Map();
+function runSpeed(t, s) {
+  const key = t.idx * 4096 + Math.round(s);
+  let v = runCache.get(key);
+  if (v != null) return v;
+  const a0 = Math.max(0, s - 160);
+  v = 12;
+  for (let q = a0; q < s; q += 1) {
+    const y0 = poseAt(t, q, PO).y, kap = Math.abs(PO.kap), g = y0 - poseAt(t, q + 1, PO).y;
+    const a = G * g / Math.sqrt(1 + g * g) - 0.25 - 0.0068 * v * v + (v < 14 ? 3.4 * clamp(1 - (v - 6) / 13, 0, 1) : 0);
+    v = Math.min(Math.sqrt(Math.max(9, v * v + 2 * a)), Math.sqrt(9 / Math.max(kap, 0.002)));
+  }
+  runCache.set(key, v);
+  return v;
+}
+
+// Put the rider back on the trail. After a crash on a jump or another
+// challenge that is a run-up before it, already at speed, so it has to be
+// ridden to get past. The third failure in a row on the same one lets the
+// rider through. Any other crash restarts close to where it happened.
 export function respawn(r, ev) {
   let ti = r.safeT, s = r.safeS;
   locate(r.x, r.z, L);
   if (L.dist < 30) { ti = L.trail; s = L.s; }
+  let f = r.feat;
+  if (!f) { const c = challengeAt(trails[ti], s, 14); if (c && !c.pass) f = { t: ti, s0: c.s0, s1: c.s1 }; }
+  if (f) {
+    const key = f.t * 4096 + Math.round(f.s0), t = trails[f.t];
+    r.tries = r.tryKey === key ? r.tries + 1 : 1; r.tryKey = key;
+    if (r.tries < 3) {
+      let at = f.s0 - clamp(runSpeed(t, f.s0) * 2.2, 25, 45);
+      for (let k = 0; k < 3; k++) { const c = challengeAt(t, at, 14); if (c) at = c.s0 - 16; } // not on the one before it
+      at = Math.max(2, at);
+      placeOn(r, f.t, at, 0, runSpeed(t, at));
+      ev.push({ t: 'respawn', retry: true });
+      return;
+    }
+    r.tries = 0; ti = f.t; s = f.s1 + 5;
+  }
   const t = trails[ti];
   // Never drop someone on a ramp, a lip or the middle of a bridge.
   for (let k = 0; k < 4; k++) {
-    for (const f of t.feats) if (s > f.s0 - 14 && s < f.s1 + 2) s = f.s1 + 5;
+    for (const q of t.feats) if (s > q.s0 - 14 && s < q.s1 + 2) s = q.s1 + 5;
     for (const d of t.decks) if (!d.start && s > d.s0 - 14 && s < d.s1 + 2) s = d.s1 + 5;
   }
   placeOn(r, ti, Math.min(s, t.len - 2), 0, 6);
@@ -251,6 +297,12 @@ export function stepRider(r, inp, dt, ev) {
   if (r.trick) {
     r.trickT += dt / TRICKS[r.trick].dur;
     if (r.trickT >= 1) { ev.push({ t: 'trick', id: r.trick }); r.trick = 0; r.trickT = 0; }
+  }
+  // Remember the challenge under the wheels until it is well behind.
+  if (r.ground) {
+    const c = challengeAt(trails[r.trail], r.s, 0);
+    if (c && !c.pass && r.s >= c.s0) { r.feat = { t: r.trail, s0: c.s0, s1: c.s1 }; r.featClear = 0; }
+    else if (r.feat && (r.featClear += dt) > 1.5) { r.feat = null; r.tries = 0; }
   }
   r.suspV += (-150 * r.susp - 15 * r.suspV) * dt; r.susp = clamp(r.susp + r.suspV * dt, -0.22, 0.12);
   r.speed = Math.hypot(r.vx, r.vz);

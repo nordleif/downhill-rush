@@ -51,6 +51,12 @@ Two forks have a purple **MEGA** branch that runs straight down the fall line.
 - A room uses the world of its host. A rider who joins from the other world is moved over.
 - `?world=city` in the address picks the world directly.
 
+## Crashes
+
+- A crash on a jump, ramp, plank, beam or boulder gap puts the rider back at a run-up before it, already at speed.
+- The third crash in a row on the same one puts the rider past it.
+- Any other crash restarts close to where it happened.
+
 ## Bike Shop
 
 - Every finished run pays its total score as coins.
