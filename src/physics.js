@@ -3,6 +3,7 @@
 // from speed and ramp shape alone. Nothing here steers the bike for the player.
 import { surfaceAt, newSurf, locate, poseAt, trails, hitObstacle } from './course.js';
 import { clamp, wrapPi } from './noise.js';
+import { NEUTRAL } from './bikes.js';
 
 export const G = 11;
 const PI2 = Math.PI * 2;
@@ -26,6 +27,7 @@ export function newRider() {
     pitch: 0, lean: 0, susp: 0, suspV: 0, crank: 0, wheel: 0,
     surf: 1, w: 1, trail: 0, s: 0, lat: 0, kap: 0, deck: null, slide: 0, braking: 0, pedaling: 0,
     safeT: 0, safeS: 9, clear: 0, stuck: 0,
+    bike: NEUTRAL, // stats of the bike being ridden, see bikes.js
   };
 }
 
@@ -90,7 +92,8 @@ function groundStep(r, inp, dt, ev) {
   // Steering: turn rate is limited by grip, berms add grip on the inside.
   const off = 1 - S.w, wood = S.surf === 2;
   const bankIn = -sr0 * Math.sign(r.steer);
-  const amax = (wood ? 12 : 12 - 4 * off) + G * clamp(bankIn, -0.2, 0.5) * 1.3;
+  const B = r.bike;
+  const amax = (wood ? 12 : 12 - 4 * off) * B.grip + G * clamp(bankIn, -0.2, 0.5) * 1.3;
   const wmax = Math.min(2.4, amax / Math.max(f0, 1)) * Math.max(0.3, Math.min(1, f0 / 2));
   r.yaw += r.steer * wmax * dt;
   fx = Math.sin(r.yaw); fz = -Math.cos(r.yaw);
@@ -99,9 +102,9 @@ function groundStep(r, inp, dt, ev) {
   const sf = clamp(hx * fx + hz * fz, -1.2, 1.2), sr = clamp(hx * rx + hz * rz, -1, 1);
   let a = -G * sf / Math.sqrt(1 + sf * sf);
   const roll = wood ? 0.2 : 0.25 + 1.9 * off + (S.rough ? 0.45 : 0);
-  a -= roll * Math.min(1, f / 0.3) + (0.0068 + 0.012 * (wood ? 0 : off)) * f * f;
+  a -= roll * Math.min(1, f / 0.3) + (0.0068 * B.drag + 0.012 * (wood ? 0 : off)) * f * f;
   r.pedaling = 0;
-  if (inp.pedal > 0) { a += (3.4 + 1.6 * clamp(1 - f / 5, 0, 1)) * clamp(1 - (f - 6) / 13, 0, 1) * inp.pedal; r.pedaling = inp.pedal; }
+  if (inp.pedal > 0) { a += (3.4 * B.pedal + 1.6 * clamp(1 - f / 5, 0, 1)) * clamp(1 - (f - 6) / (13 * B.pedal), 0, 1) * inp.pedal; r.pedaling = inp.pedal; }
   r.braking = inp.brake;
   if (inp.brake > 0) a -= 10 * inp.brake;
   f += a * dt; if (f < 0) f = 0;
@@ -163,9 +166,9 @@ function airStep(r, inp, dt, ev) {
   if (r.airT > 0.14) {
     // Spins and flips follow the stick, then level themselves out when you let go.
     const sIn = inp.steer, fIn = inp.pitch;
-    if (Math.abs(sIn) > 0.2) { r.spinV += (sIn * SPIN_RATE - r.spinV) * Math.min(1, 10 * dt); r.spinDir = Math.sign(sIn); }
+    if (Math.abs(sIn) > 0.2) { r.spinV += (sIn * SPIN_RATE * r.bike.air - r.spinV) * Math.min(1, 10 * dt); r.spinDir = Math.sign(sIn); }
     else r.spinV = assist(r.spin, r.spinDir, 5.5);
-    if (Math.abs(fIn) > 0.2) { r.flipV += (fIn * FLIP_RATE - r.flipV) * Math.min(1, 10 * dt); r.flipDir = Math.sign(fIn); }
+    if (Math.abs(fIn) > 0.2) { r.flipV += (fIn * FLIP_RATE * r.bike.air - r.flipV) * Math.min(1, 10 * dt); r.flipDir = Math.sign(fIn); }
     else r.flipV = assist(r.flip, r.flipDir, 6);
     r.spin += r.spinV * dt; r.flip += r.flipV * dt;
   } else {
@@ -199,17 +202,17 @@ function land(r, nx, nz, ev) {
   let vh2 = Math.max((vh + r.vy * m) / (1 + m * m), vh * 0.5);
   const sp = r.spin / PI2, fl = r.flip / PI2;
   const spinErr = Math.abs(sp - Math.round(sp)) * 360, flipErr = Math.abs(fl - Math.round(fl)) * 360;
-  const big = r.airT > 0.3;
+  const big = r.airT > 0.3, tough = r.bike.tough;
   r.x = nx; r.z = nz; r.y = S2.y;
   if (S2.gully > 5 && !S2.deck && S2.w < 0.3) { crash(r, ev, 'ravine'); return; }
   if (big) {
     const busy = r.trick && r.trickT > 0.1 && r.trickT < 0.88;
-    if (flipErr > 55 || spinErr > 60 || busy || impact > 18) {
-      crash(r, ev, busy ? 'trick' : impact > 18 ? 'impact' : 'rotation'); return;
+    if (flipErr > 55 || spinErr > 60 || busy || impact > 18 * tough) {
+      crash(r, ev, busy ? 'trick' : impact > 18 * tough ? 'impact' : 'rotation'); return;
     }
     if (r.trick) { ev.push({ t: 'trick', id: r.trick }); r.trick = 0; r.trickT = 0; }
-    const q = flipErr > 35 || spinErr > 38 || impact > 13.5 ? 0 : (flipErr < 14 && spinErr < 16 && impact < 8) ? 2 : 1;
-    if (impact > 12) vh2 *= 0.88;
+    const q = flipErr > 35 || spinErr > 38 || impact > 13.5 * tough ? 0 : (flipErr < 14 && spinErr < 16 && impact < 8 * tough) ? 2 : 1;
+    if (impact > 12 * tough) vh2 *= 0.88;
     ev.push({ t: 'land', q, impact, airT: r.airT, spins: Math.round(sp), flips: Math.round(fl) });
     r.yaw = Math.atan2(dx, -dz) + (sp - Math.round(sp)) * PI2 * 0.5;
   } else {
@@ -239,7 +242,7 @@ export function stepRider(r, inp, dt, ev) {
   if (ob) {
     const dx = r.x - ob.x, dz = r.z - ob.z, d = Math.hypot(dx, dz) || 1, sp = Math.hypot(r.vx, r.vz);
     r.x = ob.x + dx / d * (ob.r + 0.32); r.z = ob.z + dz / d * (ob.r + 0.32);
-    if (sp > 5.5) { crash(r, ev, ob.rock ? 'rock' : 'tree'); r.vx = dx / d * 2; r.vz = dz / d * 2; return; }
+    if (sp > 5.5 * r.bike.tough) { crash(r, ev, ob.rock ? 'rock' : 'tree'); r.vx = dx / d * 2; r.vz = dz / d * 2; return; }
     r.vx *= 0.4; r.vz *= 0.4;
   }
   if (!r.ground && inp.trick && !r.trick && r.airT > 0.08) { r.trick = inp.trick; r.trickT = 0; ev.push({ t: 'trickStart', id: inp.trick }); }

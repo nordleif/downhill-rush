@@ -8,7 +8,8 @@ import { ChaseCam } from './camera.js';
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
 import { Particles } from './fx.js';
-import { Score, timeBonus, medalFor } from './score.js';
+import { Score, timeBonus, medalFor, MEDALS } from './score.js';
+import { BIKES, BAR_NAMES, NEUTRAL } from './bikes.js';
 import { Net, newRoomId, cleanRoom, roomLabel } from './net.js';
 import { makeBot } from './bot.js';
 import { clamp, wrapPi } from './noise.js';
@@ -37,14 +38,13 @@ const input = new Input();
 const sfx = new Sfx();
 const S = newSurf(), P = {};
 
-const me = { r: newRider(), model: new BikeModel(0), score: new Score(), name: 'Rider', col: 0 };
-scene.add(me.model.root, me.model.blob);
+const me = { r: newRider(), model: null, score: new Score(), name: 'Rider', col: 0 };
 const inp = { steer: 0, pedal: 0, brake: 0, pitch: 0, jump: false, trick: 0 };
 const ev = [];
 let bot = makeBot(QS.get('route') || 'blue', { tricks: true, pedalTo: 13 });
 
-// state: menu (demo ride behind the menu), gate, count, race, done
-const G = { state: 'menu', paused: false, time: 0, count: 0, lastCount: 9, cp: 0, cpAt: null, prog: 0, cleanSince: true, doneT: 0, result: null, auto: QS.has('auto') };
+// state: menu (demo ride behind the menu), shop, gate, count, race, done
+const G = { same: false, state: 'menu', paused: false, time: 0, count: 0, lastCount: 9, cp: 0, cpAt: null, prog: 0, cleanSince: true, doneT: 0, result: null, auto: QS.has('auto') };
 const F = { corner: null, skinny: null, trickHold: 0 };
 const SLOTS = [[-1.1, 0], [1.1, 0], [-3.1, 0], [3.1, 0], [-1.1, -2.4], [1.1, -2.4], [-3.1, -2.4], [3.1, -2.4]];
 
@@ -66,7 +66,7 @@ function labelSprite(text, color) {
 }
 function addRemote(p) {
   if (remotes.has(p.id)) return;
-  const model = new BikeModel(p.col), label = labelSprite(p.name, OUTFITS[p.col % OUTFITS.length].name);
+  const model = new BikeModel(p.col, p.bike || 0), label = labelSprite(p.name, OUTFITS[p.col % OUTFITS.length].name);
   const R = { id: p.id, name: p.name, col: p.col, model, label, a: null, b: null, st: { x: 0, y: -999, z: 0, yaw: 0, pitch: 0, lean: 0, steer: 0, trick: 0, trickT: 0, crank: 0, wheel: 0, susp: 0, crashed: false, tum: 0, tumAx: 0, speed: 0, air: false, pedaling: false, groundY: null }, prog: 0, score: 0, fin: null };
   scene.add(model.root, model.blob, label); remotes.set(p.id, R);
 }
@@ -75,7 +75,7 @@ function dropRemote(id) {
   scene.remove(R.model.root, R.model.blob, R.label); remotes.delete(id);
 }
 function onNet(m) {
-  if (m.t === 'join') { addRemote(m); if (net.host) net.send({ t: 'sync', to: m.id, racing: G.state === 'count' || G.state === 'race' || G.state === 'done' }); if (G.result) net.send({ t: 'fin', to: m.id, ...G.result }); }
+  if (m.t === 'join') { addRemote(m); net.send({ t: 'bike', to: m.id, b: bikeIdx() }); if (net.host) net.send({ t: 'sync', to: m.id, same: G.same, racing: G.state === 'count' || G.state === 'race' || G.state === 'done' }); if (G.result) net.send({ t: 'fin', to: m.id, ...G.result }); }
   else if (m.t === 'leave') dropRemote(m.id);
   else if (m.t === 'closed') { leave(); $('err').textContent = 'Connection lost. Join again.'; }
   else if (m.t === 's') {
@@ -83,7 +83,12 @@ function onNet(m) {
     R.a = R.b; R.b = { t: performance.now() / 1000, d: m.d }; R.prog = m.d[11]; R.score = m.d[12];
   }
   else if (m.t === 'go') { if (G.state === 'gate') startCountdown(); }
-  else if (m.t === 'sync') { if (m.racing && G.state === 'gate') startCountdown(); }
+  else if (m.t === 'sync') { G.same = !!m.same; applyBike(); if (m.racing && G.state === 'gate') startCountdown(); }
+  else if (m.t === 'same') { G.same = !!m.v; applyBike(); }
+  else if (m.t === 'bike') {
+    const R = remotes.get(m.f), b = Math.floor(m.b) || 0;
+    if (R && b >= 0 && b < BIKES.length) { scene.remove(R.model.root, R.model.blob); R.model = new BikeModel(R.col, b); scene.add(R.model.root, R.model.blob); }
+  }
   else if (m.t === 'again') toGate();
   else if (m.t === 'fin') { const R = remotes.get(m.f); if (R) { R.fin = m; if (G.state === 'done') showResults(); } }
   roomUi();
@@ -112,7 +117,7 @@ function updateRemotes(dt, now) {
 function toGate() {
   const slot = net.live ? SLOTS[net.col % 8] : [0, 0];
   placeOn(me.r, 0, course.start.s + slot[1], slot[0]);
-  me.r.locked = true; me.score.reset();
+  me.r.locked = true; me.score.reset(); applyBike();
   Object.assign(G, { state: 'gate', paused: false, time: 0, cp: 0, cpAt: null, prog: 0, cleanSince: true, result: null });
   F.corner = F.skinny = null;
   for (const R of remotes.values()) R.fin = null;
@@ -131,6 +136,7 @@ function finish() {
   G.result.pb = !pb || total > pb.total; G.result.pbTime = !pb || G.time < pb.time;
   try { localStorage.setItem('dr_pb', JSON.stringify({ total: Math.max(total, pb ? pb.total : 0), time: Math.min(G.time, pb ? pb.time : 1e9) })); } catch {}
   G.result.old = pb;
+  G.result.coins = total; shop.coins += total; saveShop();
   net.send({ t: 'fin', ...G.result });
   sfx.finish(); big('FINISH!', true);
   const r = me.r;
@@ -139,7 +145,7 @@ function finish() {
 function leave() {
   net.close(); for (const id of [...remotes.keys()]) dropRemote(id);
   history.replaceState(null, '', location.pathname);
-  G.state = 'menu'; G.paused = false; me.r.locked = false; placeOn(me.r, 0, course.start.s, 0, 4); bot.reset(); cam.snap(me.r);
+  G.state = 'menu'; G.paused = false; G.same = false; me.r.bike = NEUTRAL; me.r.locked = false; placeOn(me.r, 0, course.start.s, 0, 4); bot.reset(); cam.snap(me.r);
   for (const id of ['pause', 'results']) $(id).classList.remove('on');
   $('hud').classList.remove('on'); $('touch').classList.remove('on'); $('menu').classList.add('on');
 }
@@ -174,6 +180,7 @@ function roomUi() {
   if (!net.live) return;
   $('rcode').textContent = roomLabel(net.room);
   $('rlist').innerHTML = [`<span style="color:${OUTFITS[net.col % 8].name}">${esc(me.name)}</span>`].concat([...remotes.values()].map(R => `<span style="color:${OUTFITS[R.col % 8].name}">${esc(R.name)}</span>`)).join('');
+  $('rsamec').checked = G.same; $('rsamec').disabled = !net.host;
   $('rstart').style.display = net.host ? '' : 'none'; $('rwait').style.display = net.host ? 'none' : '';
   if (G.state === 'done') showResults();
 }
@@ -184,7 +191,8 @@ function showResults() {
   if (m) { $('medal').style.background = m.color; $('medal').textContent = m.name.toUpperCase(); }
   $('pbl').textContent = R.pb ? 'NEW PERSONAL BEST' : R.old ? `Best ${R.old.total.toLocaleString('en-US')} pts, ${fmt(R.old.time)}` : '';
   const n = v => v.toLocaleString('en-US');
-  $('stats').innerHTML = `<span>Time</span><b>${fmt(R.time)}</b><span>Tricks</span><b>${n(R.tricks)}</b><span>Flow</span><b>${n(R.flow)}</b><span>Time bonus</span><b>${n(R.bonus)}</b><span class="t">Total</span><b class="t">${n(R.total)}</b><span>Best combo</span><b>${n(R.best)}</b><span>Crashes</span><b>${R.crashes}</b>`;
+  $('stats').innerHTML = `<span>Time</span><b>${fmt(R.time)}</b><span>Tricks</span><b>${n(R.tricks)}</b><span>Flow</span><b>${n(R.flow)}</b><span>Time bonus</span><b>${n(R.bonus)}</b><span class="t">Total</span><b class="t">${n(R.total)}</b><span>Best combo</span><b>${n(R.best)}</b><span>Crashes</span><b>${R.crashes}</b><span>Coins</span><b>+${n(R.coins)}</b>`;
+  $('rshop').style.display = net.live ? 'none' : '';
   if (net.live) {
     const rows = [{ name: me.name, me: true, ...R }].concat([...remotes.values()].map(q => q.fin ? { name: q.name, ...q.fin } : { name: q.name, time: null }));
     rows.sort((a, b) => (a.time ?? 1e9) - (b.time ?? 1e9));
@@ -339,6 +347,54 @@ function effects(dt) {
   return wd;
 }
 
+// ------------------------------------------------------------------ bike shop
+// Coins and owned bikes live in this browser only.
+const shop = { coins: 0, owned: ['rusty'], bike: 'rusty' };
+try { const s = JSON.parse(localStorage.getItem('dr_shop')); if (s && Array.isArray(s.owned)) Object.assign(shop, s); } catch {}
+const saveShop = () => { try { localStorage.setItem('dr_shop', JSON.stringify(shop)); } catch {} };
+const bikeIdx = () => Math.max(0, BIKES.findIndex(b => b.id === shop.bike));
+const hasGold = () => { try { return JSON.parse(localStorage.getItem('dr_pb')).total >= MEDALS[0].min; } catch { return false; } };
+function setMyModel() {
+  scene.remove(me.model.root, me.model.blob); me.model = new BikeModel(me.col, bikeIdx()); scene.add(me.model.root, me.model.blob);
+}
+// The stats that count: the rider's own bike, or the starter bike for all when the host says so.
+function applyBike() {
+  const st = net.live && G.same ? NEUTRAL : BIKES[bikeIdx()].stats;
+  me.r.bike = st; me.score.mult = st.points;
+}
+const show = { scene: new THREE.Scene(), cam: new THREE.PerspectiveCamera(32, 1, 0.1, 60), model: null, i: 0, t: 0 };
+{
+  show.scene.background = new THREE.Color(0x1a2028); show.scene.environment = scene.environment; show.scene.environmentIntensity = 1.3;
+  const key = new THREE.DirectionalLight(0xfff2e0, 5); key.position.set(3, 5, 4);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(2.2, 48).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2c343f, roughness: 0.6 }));
+  show.scene.add(key, new THREE.HemisphereLight(0xbfd0e6, 0x30343c, 1.2), floor);
+  show.cam.position.set(0, 1.25, 4.3); show.cam.lookAt(0, 0.62, 0);
+}
+function showBike(i) {
+  const n = BIKES.length, b = BIKES[show.i = (i + n) % n], owned = shop.owned.includes(b.id);
+  if (show.model) show.scene.remove(show.model.root);
+  show.model = new BikeModel(me.col, show.i); show.model.rider.visible = false; show.scene.add(show.model.root);
+  $('coins').textContent = shop.coins.toLocaleString('en-US') + ' coins';
+  $('sname').textContent = b.name;
+  $('sbars').innerHTML = BAR_NAMES.map((nm, k) => `<span>${nm}</span><div>${[1, 2, 3, 4, 5].map(v => `<i class="${v <= b.bars[k] ? 'on' : ''}"></i>`).join('')}</div>`).join('');
+  const locked = b.gold && !hasGold();
+  $('snote').textContent = !owned && locked ? 'Needs a gold medal.' : '';
+  $('sbuy').textContent = owned ? (shop.bike === b.id ? 'Riding' : 'Ride') : 'Buy ' + b.price.toLocaleString('en-US');
+  $('sbuy').disabled = owned ? shop.bike === b.id : locked || shop.coins < b.price;
+}
+function openShop() {
+  G.state = 'shop'; $('menu').classList.remove('on'); $('shop').classList.add('on'); showBike(bikeIdx());
+}
+function closeShop() { G.state = 'menu'; $('shop').classList.remove('on'); $('menu').classList.add('on'); }
+function buyOrRide() {
+  const b = BIKES[show.i];
+  if (!shop.owned.includes(b.id)) {
+    if (shop.coins < b.price || (b.gold && !hasGold())) return;
+    shop.coins -= b.price; shop.owned.push(b.id); sfx.init(); sfx.finish();
+  }
+  shop.bike = b.id; saveShop(); setMyModel(); showBike(show.i);
+}
+
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
@@ -347,6 +403,11 @@ function frame(now) {
 }
 function tick(dt, now) {
   const r = me.r;
+  if (G.state === 'shop') {
+    input.events.length = 0; show.t += dt;
+    show.model.update({ x: 0, y: 0, z: 0, yaw: show.t * 0.6, pitch: 0, lean: 0, steer: 0.25, trick: 0, trickT: 0, crank: 0.6, wheel: 0, susp: 0, crashed: false, tum: 0, tumAx: 0, speed: 0, air: false, pedaling: false, groundY: null }, dt);
+    renderer.render(show.scene, show.cam); return;
+  }
   for (const e of input.events) {
     if (e === 'mute') toggleMute();
     else if (e === 'pause' && G.state !== 'menu') togglePause();
@@ -408,8 +469,7 @@ async function join(room) {
   try {
     await net.connect(room, me.name);
     for (const p of net.peers.values()) addRemote(p);
-    me.col = net.col;
-    scene.remove(me.model.root, me.model.blob); me.model = new BikeModel(net.col); scene.add(me.model.root, me.model.blob);
+    me.col = net.col; setMyModel(); net.send({ t: 'bike', b: bikeIdx() });
     history.replaceState(null, '', '?room=' + room);
     toGate();
   } catch (e) {
@@ -429,6 +489,11 @@ $('join').onclick = () => { const c = cleanRoom($('code').value); if (c) join(c)
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('join').click(); });
 $('rstart').onclick = () => { net.send({ t: 'go' }); startCountdown(); };
 $('rcopy').onclick = e => copyLink(e.target); $('pcopy').onclick = e => copyLink(e.target);
+$('rsamec').onchange = e => { if (!net.host) return; G.same = e.target.checked; net.send({ t: 'same', v: G.same }); applyBike(); };
+$('shopb').onclick = openShop; $('sback').onclick = closeShop; $('sbuy').onclick = buyOrRide;
+$('sprev').onclick = () => showBike(show.i - 1); $('snext').onclick = () => showBike(show.i + 1);
+$('rshop').onclick = () => { leave(); openShop(); };
+addEventListener('keydown', e => { if (G.state !== 'shop') return; if (e.key === 'ArrowLeft') showBike(show.i - 1); else if (e.key === 'ArrowRight') showBike(show.i + 1); else if (e.key === 'Escape') closeShop(); });
 $('resume').onclick = togglePause;
 $('prestart').onclick = () => { togglePause(); toGate(); };
 $('pmute').onclick = toggleMute;
@@ -440,8 +505,10 @@ if (preRoom) { $('code').value = preRoom; $('solo').style.display = 'none'; $('c
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  show.cam.aspect = camera.aspect; show.cam.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
+me.model = new BikeModel(0, bikeIdx()); scene.add(me.model.root, me.model.blob);
 placeOn(me.r, 0, course.start.s, 0, 4); cam.snap(me.r);
-if (QS.has('debug')) window.__dr = { G, me, net, remotes, cam, course, trails, placeOn, input, inp, toGate, scene, renderer, camera, run(sec, dt = 1 / 60) { for (let t = 0; t < sec; t += dt) tick(dt, performance.now()); } };
+if (QS.has('debug')) window.__dr = { G, me, shop, net, remotes, cam, course, trails, placeOn, input, inp, toGate, scene, renderer, camera, run(sec, dt = 1 / 60) { for (let t = 0; t < sec; t += dt) tick(dt, performance.now()); } };
 requestAnimationFrame(frame);

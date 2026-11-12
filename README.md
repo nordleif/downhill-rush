@@ -35,6 +35,15 @@ https://downhill-rush.bo-29c.workers.dev
 - Flow points come from carving corners at speed, clean sections between checkpoints, jump chains, long air and riding a whole skinny.
 - The total is tricks plus flow plus a time bonus. Medal limits are in `src/score.js`.
 
+## Bike Shop
+
+- Every finished run pays its total score as coins.
+- **Bike Shop** on the start screen sells six bikes. Each one is better than the last in speed, grip, air and toughness.
+- Carbon Beast also needs a gold medal.
+- In a race, every rider sees the bikes of the others. The host can tick **Same Bikes** so that all bikes ride like the starter bike.
+- Coins and bikes are stored in the browser, so they belong to one device.
+- Prices, stats and looks are in `src/bikes.js`.
+
 ## Build
 
 ```
@@ -95,6 +104,7 @@ npm run map
 | `src/world.js` | The visible mountain: ground, forest, wood, water, signs, sky |
 | `src/pbr.js` | Shared material and texture loader |
 | `docs/tex/` | Ground, rock, bark, plank and foliage textures, cut from CC0 scans by [Poly Haven](https://polyhaven.com) |
+| `src/bikes.js` | The bikes in the shop: price, stats, look |
 | `src/bike.js` | Rider and bike model with trick poses |
 | `src/camera.js` | Chase camera |
 | `src/input.js` | Keyboard, touch, controller |

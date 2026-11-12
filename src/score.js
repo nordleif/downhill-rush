@@ -10,7 +10,7 @@ const ROT = {
 const PI2 = Math.PI * 2;
 
 export class Score {
-  constructor() { this.reset(); }
+  constructor() { this.mult = 1; this.reset(); } // mult: trick bonus of the bike
   reset() { this.tricks = 0; this.flow = 0; this.best = 0; this.crashes = 0; this.uses = {}; this.items = []; this.chain = 0; this.lastLand = -99; }
   get total() { return this.tricks + this.flow; }
   stale(key) { return Math.max(0.25, Math.pow(0.8, this.uses[key] || 0)); }
@@ -38,7 +38,7 @@ export class Score {
     const v = this.value(list);
     let pts = v.pts * [0.6, 1, 1.25][q] + (q === 2 ? 200 : q === 1 ? 100 : 0);
     if (airT > 1.2) pts += Math.round((airT - 1.2) * 40) * 10;
-    pts = Math.round(pts / 10) * 10;
+    pts = Math.round(pts * this.mult / 10) * 10;
     for (const it of list) this.uses[it.key] = (this.uses[it.key] || 0) + 1;
     this.tricks += pts; this.best = Math.max(this.best, pts);
     this.chain = now - this.lastLand < 14 ? this.chain + 1 : 1; this.lastLand = now;

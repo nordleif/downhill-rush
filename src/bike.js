@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { clamp, sm } from './noise.js';
 import { pbr } from './pbr.js';
+import { BIKES } from './bikes.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -31,9 +32,9 @@ function tube(a, b, r, m) {
 }
 
 // Knobbly tyre, dark rim and thin spokes.
-function wheel(mTire, mRim) {
+function wheel(mTire, mRim, ty) {
   const g = new THREE.Group();
-  const tire = new THREE.Mesh(new THREE.TorusGeometry(0.335, 0.036, 10, 36), mTire); tire.rotation.y = Math.PI / 2; g.add(tire);
+  const tire = new THREE.Mesh(new THREE.TorusGeometry(0.371 - ty, ty, 10, 36), mTire); tire.rotation.y = Math.PI / 2; g.add(tire);
   const rim = new THREE.Mesh(new THREE.TorusGeometry(0.298, 0.013, 6, 36), mRim); rim.rotation.y = Math.PI / 2; g.add(rim);
   for (let i = 0; i < 8; i++) {
     const s = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.59, 4), mRim); s.rotation.x = i * Math.PI / 8; g.add(s);
@@ -67,32 +68,34 @@ function elbow(a, b, l1, l2, hint, out) {
 }
 
 export class BikeModel {
-  constructor(outfit) {
-    const o = OUTFITS[outfit % OUTFITS.length];
+  constructor(outfit, bike = 0) {
+    const o = OUTFITS[outfit % OUTFITS.length], K = BIKES[bike % BIKES.length].look, ft = K.fat;
     this.root = new THREE.Group();           // position + heading
     this.pitchG = new THREE.Group(); this.pitchG.position.y = 0.9; this.root.add(this.pitchG);
     this.body = new THREE.Group(); this.body.position.y = -0.9; this.pitchG.add(this.body); // lean about the tyres
     this.bike = new THREE.Group(); this.body.add(this.bike);
-    const mFrame = mat(o.frame, { roughness: 0.35, metalness: 0.4 }), mDark = mat(0x17181b, { roughness: 0.6 }), mTire = mat(0x101012, { roughness: 1 }), mRim = mat(0x1c1d20, { roughness: 0.4, metalness: 0.6 }), mFork = mat(0x18191c, { roughness: 0.3, metalness: 0.7 });
+    const mFrame = mat(K.frame, { roughness: K.rough, metalness: K.metal }), mDark = mat(0x17181b, { roughness: 0.6 }), mTire = mat(0x101012, { roughness: 1 }), mRim = mat(K.rim, { roughness: 0.4, metalness: 0.6 }), mFork = mat(K.fork, { roughness: 0.3, metalness: 0.7 });
     const B = this.bike, add = m => { m.castShadow = true; B.add(m); return m; };
     const bb = V(0, 0.34, 0.1), seatTop = V(0, 0.9, 0.3), headT = V(0, 0.98, -0.4), headB = V(0, 0.82, -0.45), rearAx = V(0, 0.36, 0.6);
-    add(tube(bb, seatTop, 0.024, mFrame)); add(tube(bb, headB, 0.036, mFrame)); add(tube(V(0, 0.8, 0.26), headT, 0.028, mFrame));
-    add(tube(headB, headT, 0.034, mFrame));
-    for (const sx of [-1, 1]) { add(tube(bb, V(sx * 0.08, 0.36, 0.6), 0.016, mFrame)); add(tube(V(0, 0.74, 0.27), V(sx * 0.08, 0.36, 0.6), 0.013, mFrame)); }
+    add(tube(bb, seatTop, 0.024 * ft, mFrame)); add(tube(bb, headB, 0.036 * ft, mFrame)); add(tube(V(0, 0.8, 0.26), headT, 0.028 * ft, mFrame));
+    add(tube(headB, headT, 0.034 * ft, mFrame));
+    for (const sx of [-1, 1]) { add(tube(bb, V(sx * 0.08, 0.36, 0.6), 0.016 * ft, mFrame)); add(tube(V(0, 0.74, 0.27), V(sx * 0.08, 0.36, 0.6), 0.013 * ft, mFrame)); }
     add(tube(V(0, 0.56, 0.18), V(0, 0.72, 0.02), 0.022, mat(0xd9a520, { roughness: 0.4, metalness: 0.5 }))); // shock
     const seat = add(ball(1, mDark, 0.07, 0.03, 0.14)); seat.position.set(0, 0.94, 0.33);
-    this.rear = wheel(mTire, mRim); this.rear.position.copy(rearAx); B.add(this.rear);
+    this.rear = wheel(mTire, mRim, K.tyre); this.rear.position.copy(rearAx); B.add(this.rear);
     // Steering assembly: fork, front wheel and bars turn around the head tube.
     this.steerG = new THREE.Group(); this.steerG.position.copy(headT); B.add(this.steerG);
     this.steerAxis = headT.clone().sub(headB).normalize();
     const S = this.steerG, sadd = m => { m.castShadow = true; S.add(m); return m; };
     const fa = V(0, 0.36, -0.6).sub(headT);
-    for (const sx of [-1, 1]) sadd(tube(V(sx * 0.085, -0.14, -0.04), V(sx * 0.085, fa.y, fa.z), 0.021, mFork));
+    for (const sx of [-1, 1]) sadd(tube(V(sx * 0.085, -0.14, -0.04), V(sx * 0.085, fa.y, fa.z), 0.021 * K.forkFat, mFork));
+    // Downhill forks run all the way up to a second crown under the bars.
+    if (K.dual) { for (const sx of [-1, 1]) sadd(tube(V(sx * 0.085, -0.14, -0.04), V(sx * 0.085, 0.05, -0.012), 0.019, mFork)); sadd(tube(V(-0.1, 0.05, -0.012), V(0.1, 0.05, -0.012), 0.022, mFork)); }
     sadd(tube(V(-0.1, -0.14, -0.04), V(0.1, -0.14, -0.04), 0.024, mFork));
     sadd(tube(V(0, 0, 0), V(0, 0.08, -0.02), 0.022, mDark));
     sadd(tube(V(-0.39, 0.1, 0), V(0.39, 0.1, 0), 0.014, mDark));
     for (const sx of [-1, 1]) sadd(tube(V(sx * 0.29, 0.1, 0), V(sx * 0.41, 0.1, 0), 0.019, mDark));
-    this.front = wheel(mTire, mRim); this.front.position.copy(fa); S.add(this.front);
+    this.front = wheel(mTire, mRim, K.tyre); this.front.position.copy(fa); S.add(this.front);
     this.gripL = V(-0.35, 0.1, 0); this.gripR = V(0.35, 0.1, 0);
     // Cranks and pedals.
     this.crankG = new THREE.Group(); this.crankG.position.copy(bb); B.add(this.crankG);

@@ -3,6 +3,7 @@
 import { initCourse, trails, course, surfaceAt, newSurf, poseAt, progressOf, locate } from '../src/course.js';
 import { newRider, stepRider, placeOn } from '../src/physics.js';
 import { makeBot } from '../src/bot.js';
+import { BIKES } from '../src/bikes.js';
 
 initCourse();
 const verbose = process.argv.includes('-v');
@@ -19,8 +20,9 @@ for (const t of trails) {
 }
 console.log('finish p', course.finishP.toFixed(0), 'checkpoints', course.checkpoints.map(c => c.p.toFixed(0)).join(' '), 'trees', course.trees.length, 'rocks', course.rocks.length);
 
-function ride(name, prefer, opts = {}) {
-  const r = newRider(), ev = [], inp = { steer: 0, pedal: 0, brake: 0, pitch: 0, jump: false, trick: 0 };
+function ride(name, prefer, opts = {}, bike = 0) {
+  const r = newRider(); r.bike = BIKES[bike].stats;
+  const ev = [], inp = { steer: 0, pedal: 0, brake: 0, pitch: 0, jump: false, trick: 0 };
   const bot = makeBot(prefer, opts);
   placeOn(r, 0, course.start.s);
   const dt = 1 / 120; let time = 0, crashes = 0, vmax = 0, airs = [], prog = 0, vsum = 0, n = 0;
@@ -49,3 +51,5 @@ ride('tricks', 'black', { tricks: true, pedalTo: 13 });
 ride('keys', 'blue', { digital: true });
 ride('keysB', 'black', { digital: true });
 ride('fast', 'black', { pedalTo: 30, grip: 12 });
+for (const b of [3, 5]) for (const route of ['green', 'blue', 'black']) ride(BIKES[b].id.slice(0, 5) + route[0], route, {}, b);
+ride('beastT', 'black', { tricks: true, pedalTo: 13 }, 5);
