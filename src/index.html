@@ -28,6 +28,8 @@ canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block}
 #clock{position:absolute;right:max(16px,env(safe-area-inset-right));top:14px;font-size:34px;background:rgba(10,20,35,.45);padding:4px 14px;border-radius:12px;font-variant-numeric:tabular-nums}
 #score{position:absolute;right:max(16px,env(safe-area-inset-right));top:66px;font-size:22px;color:#ffd23c;text-align:right}
 #score small{font-size:13px;color:#fff;opacity:.85}
+#wallet{position:absolute;right:max(16px,env(safe-area-inset-right));top:96px;font-size:17px;text-align:right}
+#wallet small{font-size:12px;opacity:.85}
 #trick{position:absolute;left:50%;top:21%;transform:translateX(-50%);text-align:center;white-space:nowrap;opacity:0;transition:opacity .25s}
 #trick.on{opacity:1}
 #tname{font-size:30px}
@@ -109,7 +111,7 @@ body.touch #touch.on{display:block}
 body.touch #map{bottom:auto;top:92px;width:104px;height:104px}
 body.touch #speedo{bottom:auto;top:100px;right:66px;transform:scale(.62);transform-origin:top right}
 body.touch #keys{display:none}
-@media (max-width:760px){#pos{font-size:44px}#pos i{font-size:22px}#clock{font-size:24px}#cps{transform:translateX(-50%) scale(.82);transform-origin:top}#tname{font-size:20px}#tpts{font-size:34px}#tcombo{font-size:18px}#big{font-size:96px}#board{display:none}#score{top:54px;font-size:17px}}
+@media (max-width:760px){#pos{font-size:44px}#pos i{font-size:22px}#clock{font-size:24px}#cps{transform:translateX(-50%) scale(.82);transform-origin:top}#tname{font-size:20px}#tpts{font-size:34px}#tcombo{font-size:18px}#big{font-size:96px}#board{display:none}#score{top:54px;font-size:17px}#wallet{top:78px;font-size:14px}}
 </style>
 </head>
 <body>
@@ -121,6 +123,7 @@ body.touch #keys{display:none}
   <div id="cps" class="it"><div id="cpt">CHECKPOINT 0/6</div><div id="dots"></div></div>
   <div id="clock" class="it">0:00.00</div>
   <div id="score" class="it sh"><span id="pts">0</span> <small>PTS</small></div>
+  <div id="wallet" class="it sh"><span id="wal">0</span> <small>COINS</small></div>
   <div id="trick" class="it sh"><div id="tname"></div><div id="tpts"></div><div id="tcombo"></div></div>
   <div id="flow" class="it sh"></div>
   <div id="route" class="it"></div>
@@ -155,6 +158,7 @@ body.touch #keys{display:none}
   <div><label for="name">NAME</label><input id="name" maxlength="12" autocomplete="off" spellcheck="false"></div>
   <div class="row"><button id="solo">Ride Solo</button><button id="create" class="b2">Create Race</button></div>
   <div class="row"><input id="code" placeholder="Room code" maxlength="20" autocomplete="off" spellcheck="false"><button id="join" class="b2">Join Race</button></div>
+  <div><label>WORLD</label><div class="row"><button id="wmountain" class="b3 sm">Mountain</button><button id="wcity" class="b3 sm">City</button></div></div>
   <button id="shopb" class="b3">Bike Shop</button>
   <div id="err"></div>
   <div id="keys">

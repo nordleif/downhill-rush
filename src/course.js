@@ -224,9 +224,10 @@ export function deckY(dk, s, ty) {
 }
 
 // ---------------------------------------------------------------- the course
+export let WORLD = 'mountain'; // 'mountain' or 'city', set once by initCourse
 export const trails = [];
 export const course = {
-  forks: [], checkpoints: [], arches: [], signs: [], trees: [], rocks: [],
+  forks: [], checkpoints: [], arches: [], signs: [], trees: [], rocks: [], buildings: [], lamps: [],
   finishP: 0, finish: null, start: null, meadow: [0, 0], bounds: null,
 };
 
@@ -471,17 +472,20 @@ export const progressOf = (ti, s) => { const t = trails[ti]; return t.p0 + (t.p1
 // ---------------------------------------------------------------- obstacles
 const OC = 6, ogrid = new Map();
 function addObstacle(o) {
-  const k = key(Math.floor(o.x / OC), Math.floor(o.z / OC));
-  let a = ogrid.get(k); if (!a) ogrid.set(k, a = []); a.push(o);
+  const R = o.hx ? Math.max(o.hx, o.hz) : 0; // boxes go into every cell they cover
+  for (let cx = Math.floor((o.x - R) / OC); cx <= Math.floor((o.x + R) / OC); cx++) for (let cz = Math.floor((o.z - R) / OC); cz <= Math.floor((o.z + R) / OC); cz++) {
+    const k = key(cx, cz);
+    let a = ogrid.get(k); if (!a) ogrid.set(k, a = []); a.push(o);
+  }
 }
-// Tree trunk or boulder touching a rider at (x, y, z), or null.
+// Tree trunk, boulder, lamp or building touching a rider at (x, y, z), or null.
 export function hitObstacle(x, y, z) {
   const cx = Math.floor(x / OC), cz = Math.floor(z / OC);
   for (let a = cx - 1; a <= cx + 1; a++) for (let b = cz - 1; b <= cz + 1; b++) {
     const cell = ogrid.get(key(a, b)); if (!cell) continue;
     for (const o of cell) {
       const dx = x - o.x, dz = z - o.z, r = o.r + 0.3;
-      if (dx * dx + dz * dz < r * r && y < o.top) return o;
+      if ((o.hx ? Math.abs(dx) < o.hx + 0.3 && Math.abs(dz) < o.hz + 0.3 : dx * dx + dz * dz < r * r) && y < o.top) return o;
     }
   }
   return null;
@@ -505,6 +509,7 @@ function scatter() {
   const B = course.bounds, C = 6.5;
   for (let cz = Math.floor(B.z0 / C); cz < B.z1 / C; cz++) for (let cx = Math.floor(B.x0 / C); cx < B.x1 / C; cx++) {
     const x = (cx + rng()) * C, z = (cz + rng()) * C, r1 = rng(), r2 = rng(), r3 = rng();
+    if (WORLD === 'city' && meadowAt(z) < 0.45) continue; // only the park has trees
     surfaceAt(x, z, -1e9, o);
     let d = o.dist;
     if (o.trail < 0) d = locate(x, z, L).dist - 4;
@@ -537,6 +542,7 @@ function scatter() {
       course.rocks.push(rk); addObstacle(rk);
     }
   }
+  if (WORLD === 'city') cityBlocks(rng);
 }
 
 function furnish() {
@@ -571,10 +577,59 @@ function furnish() {
   }
 }
 
+// The city: buildings fill the ground between the streets, lamps line them.
+const BUILD_KINDS = [
+  { hx: 4.5, hz: 4.5, h: 9.5 },   // house
+  { hx: 7, hz: 6, h: 15.5 },      // block
+  { hx: 6.5, hz: 6.5, h: 27.5 },  // tower
+  { hx: 10, hz: 6, h: 12.5 },     // wide block
+  { hx: 2.8, hz: 2.8, h: 3.6 },   // garage
+];
+function cityBlocks(rng) {
+  course.buildKinds = BUILD_KINDS;
+  const o = newSurf(), L = {}, P = {}, B = course.bounds, C = 11, HC = 24, hash = new Map();
+  const free = (x, z, k) => {
+    const cx = Math.floor(x / HC), cz = Math.floor(z / HC);
+    for (let a = cx - 1; a <= cx + 1; a++) for (let b = cz - 1; b <= cz + 1; b++) {
+      const cell = hash.get(key(a, b)); if (!cell) continue;
+      for (const q of cell) if (Math.abs(q.x - x) < q.hx + k.hx + 1.2 && Math.abs(q.z - z) < q.hz + k.hz + 1.2) return false;
+    }
+    return true;
+  };
+  for (let cz = Math.floor(B.z0 / C); cz < B.z1 / C; cz++) for (let cx = Math.floor(B.x0 / C); cx < B.x1 / C; cx++) {
+    const x = (cx + 0.3 + 0.4 * rng()) * C, z = (cz + 0.3 + 0.4 * rng()) * C, r1 = rng(), r2 = rng(), tint = rng();
+    surfaceAt(x, z, -1e9, o);
+    let d = o.dist;
+    if (o.trail < 0) d = locate(x, z, L).dist - 4;
+    if (o.gully > 0.4 || meadowAt(z) > 0.5 || (d > 170 && r1 > 0.3)) continue;
+    if (course.signs.some(g => (g.x - x) ** 2 + (g.z - z) ** 2 < 200)) continue;
+    const order = r2 < 0.2 ? [3, 1, 0, 4] : r2 < 0.38 ? [2, 1, 0, 4] : r2 < 0.7 ? [1, 0, 4] : [0, 4];
+    for (const ki of order) {
+      const k = BUILD_KINDS[ki], rad = Math.hypot(k.hx, k.hz);
+      if (d < rad + 1.6 || !free(x, z, k)) continue;
+      if (gullyDepth(x - k.hx, z) > 0.4 || gullyDepth(x + k.hx, z) > 0.4) continue;
+      const b = { x, z, y: o.y, kind: ki, hx: k.hx, hz: k.hz, r: rad, top: o.y + k.h, solid: true, tint };
+      course.buildings.push(b);
+      const hk = key(Math.floor(x / HC), Math.floor(z / HC)); let a = hash.get(hk); if (!a) hash.set(hk, a = []); a.push(b);
+      if (d < 45) addObstacle(b);
+      break;
+    }
+  }
+  for (const t of trails) for (let s = 30, n = 0; s < t.len - 10; s += 28, n++) {
+    poseAt(t, s, P);
+    if (t.di[P.i] >= 0 || t.fi[P.i] >= 0) continue;
+    const side = n % 2 ? 1 : -1, lat = side * (P.hw + 3), x = P.x + Math.cos(P.th) * lat, z = P.z + Math.sin(P.th) * lat;
+    surfaceAt(x, z, -1e9, o);
+    if (o.gully > 0.4 || o.dist < 2.4) continue;
+    const l = { x, z, y: o.y, th: P.th, side, r: 0.1, top: o.y + 6, solid: true };
+    course.lamps.push(l); addObstacle(l);
+  }
+}
+
 let ready = false;
-export function initCourse() {
+export function initCourse(world = 'mountain') {
   if (ready) return course;
-  ready = true;
+  ready = true; WORLD = world;
   layout(); buildGrids(); furnish(); scatter();
   const o = newSurf();
   for (const a of course.arches) a.y = surfaceAt(a.x, a.z, 1e9, o).y;

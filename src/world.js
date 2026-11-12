@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import {
-  course, trails, surfaceAt, newSurf, poseAt, deckY, GULLIES, gullyX, baseNG, LAKE_Y, VALLEY_Z, rockiness, meadowAt, forestAt, DOWN,
+  course, trails, surfaceAt, newSurf, poseAt, deckY, GULLIES, gullyX, baseNG, LAKE_Y, VALLEY_Z, rockiness, meadowAt, forestAt, DOWN, WORLD,
 } from './course.js';
 import { fbm, mulberry, clamp, sm } from './noise.js';
 import { pbr, tex } from './pbr.js';
@@ -23,21 +23,24 @@ function canvasTex(w, h, draw, repeat) {
 }
 
 // ------------------------------------------------------------------ ground
+let CITY = false; // set when the world is built
 // The ground colour holds blend weights, not a colour:
-// r = meadow grass over forest floor, g = bare rock, b = light and dark patches.
+// r = grass over forest floor (or over paving in the city), g = bare rock,
+// b = light and dark patches.
 function groundColor(x, z, o, out) {
   const n = fbm(x / 30 + 3, z / 30, 2), n2 = fbm(x / 7, z / 7 + 9, 2), md = meadowAt(z);
-  const grass = clamp(0.1 + 0.5 * sm(0.35, 0.75, n) + 0.8 * md - 0.5 * sm(0.45, 0.95, forestAt(x, z)) * (1 - md), 0, 1);
-  return out.setRGB(grass, clamp(rockiness(x, z, o.gully) * 1.2, 0, 1), 0.86 + 0.28 * n2);
+  const grass = CITY ? sm(0.4, 0.6, md) : clamp(0.1 + 0.5 * sm(0.35, 0.75, n) + 0.8 * md - 0.5 * sm(0.45, 0.95, forestAt(x, z)) * (1 - md), 0, 1);
+  return out.setRGB(grass, clamp(rockiness(x, z, o.gully) * 1.2, 0, 1), CITY ? 0.94 + 0.12 * n2 : 0.86 + 0.28 * n2);
 }
 
-// One material for the terrain and the trail strips: scanned forest floor,
-// grass and rock mixed by the weights above, and packed dirt along the trail
-// with a ragged edge. Textures are laid out in world space so that the strips
-// and the terrain match exactly.
+// One material for the terrain and the trail strips. On the mountain: scanned
+// forest floor, grass and rock mixed by the weights above, and packed dirt
+// along the trail with a ragged edge. In the city: paving, park grass, and
+// asphalt with a dashed centre line. Textures are laid out in world space so
+// that the strips and the terrain match exactly.
 function groundMat() {
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, map: tex('floor.jpg'), normalMap: tex('floor_n.jpg', { data: true }) });
-  const u = { tGrass: { value: tex('grass.jpg') }, tDirt: { value: tex('dirt.jpg') }, tRock: { value: tex('rock.jpg') } };
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, map: tex(CITY ? 'pave.jpg' : 'floor.jpg'), normalMap: tex(CITY ? 'pave_n.jpg' : 'floor_n.jpg', { data: true }) });
+  const u = { tGrass: { value: tex('grass.jpg') }, tDirt: { value: tex(CITY ? 'road.jpg' : 'dirt.jpg') }, tRock: { value: tex('rock.jpg') } };
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = 'varying vec3 vW; varying vec2 vTr;\n' + sh.vertexShader.replace('#include <uv_vertex>',
@@ -47,13 +50,15 @@ function groundMat() {
       .replace('#include <map_fragment>', `
         vec2 gu = vW.xz * 0.21;
         float macro = 0.62 + 1.9 * texture2D(tGrass, gu * 0.043).g;
-        vec3 cF = texture2D(map, gu).rgb, cG = texture2D(tGrass, gu * 1.37).rgb, cR = texture2D(tRock, gu * 0.31).rgb, cD = texture2D(tDirt, gu * 1.9).rgb;
-        vec3 gc = mix(cF * vec3(0.7, 0.74, 0.6), cG * vec3(0.62, 0.8, 0.5), vColor.r) * macro;
+        vec3 cF = texture2D(map, gu).rgb, cG = texture2D(tGrass, gu * 1.37).rgb, cR = texture2D(tRock, gu * 0.31).rgb, cD = texture2D(tDirt, gu * ${CITY ? '0.9' : '1.9'}).rgb;
+        vec3 gc = ${CITY ? 'mix(cF * mix(1.0, macro, 0.25), cG * vec3(0.62, 0.8, 0.5) * macro, vColor.r)' : 'mix(cF * vec3(0.7, 0.74, 0.6), cG * vec3(0.62, 0.8, 0.5), vColor.r) * macro'};
         gc = mix(gc, cR * 0.8, vColor.g);
         float across = abs(vTr.x - 0.5) * 2.6;
         float rag = (cD.g - 0.12) * 2.2 + (texture2D(tDirt, gu * 0.23).g - 0.12) * 3.0;
-        float tw = vTr.x < 0.0 ? 0.0 : 1.0 - smoothstep(0.7, 1.12, across + rag * 0.3);
-        gc = mix(gc, cD * vec3(1.12, 1.0, 0.86) * (1.0 + 0.3 * (1.0 - smoothstep(0.0, 0.6, across))), tw);
+        float tw = vTr.x < 0.0 ? 0.0 : 1.0 - smoothstep(${CITY ? '1.0, 1.06, across + rag * 0.02' : '0.7, 1.12, across + rag * 0.3'});
+        ${CITY
+    ? 'gc = mix(gc, cD * 0.9, tw); gc = mix(gc, vec3(0.62), tw * 0.85 * step(across, 0.055) * step(fract(vTr.y * 0.55), 0.45));'
+    : 'gc = mix(gc, cD * vec3(1.12, 1.0, 0.86) * (1.0 + 0.3 * (1.0 - smoothstep(0.0, 0.6, across))), tw);'}
         diffuseColor.rgb = gc * vColor.b;`);
   };
   return m;
@@ -314,7 +319,7 @@ function buildPlants(scene, quality) {
   const rng = mulberry(99), o = newSurf(), P = {}, grass = [], ferns = [];
   const tryAdd = (x, z, fernP) => {
     surfaceAt(x, z, -1e9, o);
-    if (o.gully > 0.6 || o.w > 0.35 || rockiness(x, z, o.gully) > 0.4) return;
+    if (o.gully > 0.6 || o.w > 0.35 || rockiness(x, z, o.gully) > 0.4 || (CITY && meadowAt(z) < 0.5)) return;
     (rng() < fernP ? ferns : grass).push({ x, y: o.y, z, r: rng() });
   };
   const step = quality > 0 ? 0.55 : 1.4;
@@ -340,6 +345,71 @@ function buildPlants(scene, quality) {
     d.position.set(it.x, it.y - 0.02, it.z); d.rotation.y = it.r * 6.28; d.scale.setScalar(0.8 + it.r * 0.9);
     col.setRGB(0.8 + it.r * 0.25, 0.9, 0.75); return true;
   }, { band: 60, maxDist: 150 });
+}
+
+// ------------------------------------------------------------------ city
+// Buildings are plain boxes with a drawn front: plaster from a scan, rows of
+// windows, a door. A second drawing says how shiny each part is, so the glass
+// mirrors the sky.
+const BUILD = [
+  { fl: 3, cols: 3 },   // house
+  { fl: 5, cols: 5 },   // block
+  { fl: 9, cols: 4 },   // tower
+  { fl: 4, cols: 7 },   // wide block
+  { fl: 1, cols: 1 },   // garage
+];
+const SUNK = 8; // how far a building reaches below its ground point, for slopes
+
+function facade(kind, k, wall, shine) {
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const g = c.getContext('2d'), W = 512, rng = mulberry(50 + kind), gy = W * k.h / (k.h + SUNK), fh = gy / k.fl;
+  if (shine) { g.fillStyle = '#e9e9e9'; g.fillRect(0, 0, W, W); }
+  else {
+    g.fillStyle = wall ? g.createPattern(wall, 'repeat') : '#b9b4aa'; g.fillRect(0, 0, W, W);
+    g.fillStyle = 'rgba(255,255,255,0.38)'; g.fillRect(0, 0, W, gy);
+    g.fillStyle = 'rgba(0,0,0,0.28)'; g.fillRect(0, gy - fh * 0.08, W, W);
+    g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, 0, W, 7);
+    if (k.fl > 1) { g.fillStyle = 'rgba(0,0,0,0.16)'; g.fillRect(0, gy - fh - 3, W, 5); }
+  }
+  for (let f = 0; f < k.fl; f++) for (let i = 0; i < k.cols; i++) {
+    const cx = (i + 0.5) / k.cols * W, top = f * fh + fh * 0.2, r = rng();
+    const door = f === k.fl - 1 && (k.fl === 1 || i === (k.cols >> 1));
+    const ww = W / k.cols * (k.fl === 1 ? 0.8 : door ? 0.36 : 0.52), wh = door ? fh * 0.8 : fh * 0.56;
+    if (shine) { g.fillStyle = door ? '#b0b0b0' : '#1c1c1c'; g.fillRect(cx - ww / 2, top, ww, wh); continue; }
+    g.fillStyle = '#e4e0d6'; g.fillRect(cx - ww / 2 - 4, top - 4, ww + 8, wh + (door ? 4 : 8));
+    if (door) { g.fillStyle = k.fl === 1 ? '#7d8288' : '#4a3628'; g.fillRect(cx - ww / 2, top, ww, wh); continue; }
+    const gr = g.createLinearGradient(0, top, 0, top + wh);
+    gr.addColorStop(0, r < 0.25 ? '#6d7377' : '#2b3742'); gr.addColorStop(1, r < 0.25 ? '#8a8d8c' : '#4b5c69');
+    g.fillStyle = gr; g.fillRect(cx - ww / 2, top, ww, wh);
+    g.fillStyle = '#e4e0d6'; g.fillRect(cx - 1.5, top, 3, wh); g.fillRect(cx - ww / 2, top + wh * 0.38, ww, 3);
+    g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(cx - ww / 2 - 6, top + wh + 4, ww + 12, 4);
+  }
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 8;
+  if (!shine) t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function buildCity(scene, quality) {
+  const KIND = course.buildKinds, PAL = [0xd8cdb8, 0xb5654a, 0xc9c4bb, 0x9fb0bd, 0xd2b56a, 0xe6e2da, 0xa8876a];
+  const roof = pbr({ color: 0x505358, roughness: 0.95 });
+  const sides = KIND.map((k, i) => pbr({ map: facade(i, { ...BUILD[i], h: k.h }, null, false), roughnessMap: facade(i, { ...BUILD[i], h: k.h }, null, true), roughness: 1 }));
+  const wall = new Image();
+  wall.onload = () => sides.forEach((m, i) => { m.map.dispose(); m.map = facade(i, { ...BUILD[i], h: KIND[i].h }, wall, false); m.needsUpdate = true; });
+  wall.src = 'tex/wall.jpg';
+  KIND.forEach((k, i) => {
+    const geo = new THREE.BoxGeometry(k.hx * 2, k.h + SUNK, k.hz * 2).translate(0, (k.h + SUNK) / 2 - SUNK, 0), s = sides[i];
+    instanced(scene, geo, [s, s, roof, roof, s, s], course.buildings.filter(b => b.kind === i), (b, d, col) => {
+      d.position.set(b.x, b.y, b.z); col.setHex(PAL[Math.floor(b.tint * PAL.length)]); return true;
+    }, { cast: quality > 0, receive: true });
+  });
+  const lamp = mergeGeometries([
+    new THREE.CylinderGeometry(0.05, 0.08, 6.2, 6).translate(0, 2.9, 0),
+    new THREE.CylinderGeometry(0.035, 0.035, 2.4, 5).rotateZ(Math.PI / 2).translate(1.2, 5.95, 0),
+    new THREE.BoxGeometry(0.6, 0.1, 0.24).translate(2.3, 5.9, 0),
+  ]);
+  instanced(scene, lamp, pbr({ color: 0x2b2e33, roughness: 0.5, metalness: 0.6 }), course.lamps, (l, d) => {
+    d.position.set(l.x, l.y, l.z); d.rotation.y = -l.th + (l.side > 0 ? Math.PI : 0);
+  }, { cast: quality > 0 });
 }
 
 // ------------------------------------------------------------------ wood
@@ -537,7 +607,7 @@ function buildRoots(scene) {
     const lat = (rng() - 0.5) * P.hw * 1.2, x = P.x + Math.cos(P.th) * lat, z = P.z + Math.sin(P.th) * lat;
     items.push({ x, z, y: surfaceAt(x, z, -1e9, o).y, th: P.th + (rng() - 0.5) * 0.9, l: 1.4 + rng() * 2.6, r: rng() });
   }
-  instanced(scene, new THREE.CylinderGeometry(0.07, 0.1, 1, 5).rotateZ(Math.PI / 2), pbr({ color: 0x3f3122 }), items, (it, d) => {
+  instanced(scene, new THREE.CylinderGeometry(0.07, 0.1, 1, 5).rotateZ(Math.PI / 2), pbr({ color: CITY ? 0x77797c : 0x3f3122 }), items, (it, d) => {
     d.position.set(it.x, it.y + 0.02, it.z); d.rotation.y = -it.th; d.scale.set(it.l, 1, 1);
   });
 }
@@ -593,6 +663,7 @@ function buildSky(scene, renderer, sunDir) {
 
 // ------------------------------------------------------------------ assembly
 export function buildWorld(scene, quality, renderer) {
+  CITY = WORLD === 'city';
   scene.fog = new THREE.FogExp2(SKY.fog, 0.00042);
   const sunDir = new THREE.Vector3(0.5, 0.62, 0.38).normalize();
   const hemi = new THREE.HemisphereLight(0x9fb6d0, 0x5c5136, 0.65); // light bounced up from the ground
@@ -605,6 +676,7 @@ export function buildWorld(scene, quality, renderer) {
   }
   const ground = groundMat();
   buildGround(scene, ground); buildTrailStrips(scene, ground); buildFar(scene);
+  if (CITY) buildCity(scene, quality);
   buildDecks(scene); buildForest(scene, quality); buildRocks(scene); buildPlants(scene, quality);
   buildArches(scene); buildSigns(scene); buildMarkers(scene); buildRoots(scene); buildWater(scene);
   const sky = buildSky(scene, renderer, sunDir);

@@ -5,7 +5,7 @@ import { newRider, stepRider, placeOn } from '../src/physics.js';
 import { makeBot } from '../src/bot.js';
 import { BIKES } from '../src/bikes.js';
 
-initCourse();
+initCourse(process.env.WORLD || 'mountain');
 const verbose = process.argv.includes('-v');
 const P = {}, S = newSurf(), LO = {};
 

@@ -27,7 +27,7 @@ export class ChaseCam {
     const dist = 3.9 + sp * 0.085, h = 3.3 + sp * 0.035 + (r.ground ? 0 : 0.5) + dist * this.g * 0.75;
     tgt.set(r.x - Math.sin(this.yaw) * dist, this.ty + h, r.z + Math.cos(this.yaw) * dist);
     for (const o of obstaclesNear(tgt.x, tgt.z, 3, near)) {
-      if (o.rock) continue;
+      if (o.rock || o.solid) continue;
       const dx = tgt.x - o.x, dz = tgt.z - o.z, d = Math.hypot(dx, dz) || 1, min = tgt.y - o.y > 3.1 * o.sc ? 2.0 * o.sc + 0.3 : 0.5 * o.sc + 0.6; // branches up high, trunk below
       if (d < min) { tgt.x = o.x + dx / d * min; tgt.z = o.z + dz / d * min; }
     }

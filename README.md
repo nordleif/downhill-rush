@@ -35,12 +35,20 @@ https://downhill-rush.bo-29c.workers.dev
 - Flow points come from carving corners at speed, clean sections between checkpoints, jump chains, long air and riding a whole skinny.
 - The total is tricks plus flow plus a time bonus. Medal limits are in `src/score.js`.
 
+## Worlds
+
+- **World** on the start screen switches between Mountain and City. Switching reloads the page.
+- City is the same trail layout in a hillside town: asphalt streets, paving, buildings, street lamps and a park.
+- A room uses the world of its host. A rider who joins from the other world is moved over.
+- `?world=city` in the address picks the world directly.
+
 ## Bike Shop
 
 - Every finished run pays its total score as coins.
 - **Bike Shop** on the start screen sells six bikes. Each one is better than the last in speed, grip, air and toughness.
 - Carbon Beast also needs a gold medal.
 - In a race, every rider sees the bikes of the others. The host can tick **Same Bikes** so that all bikes ride like the starter bike.
+- The coin balance shows under the score while riding.
 - Coins and bikes are stored in the browser, so they belong to one device.
 - Prices, stats and looks are in `src/bikes.js`.
 
@@ -98,12 +106,12 @@ npm run map
 
 | Path | Content |
 |---|---|
-| `src/course.js` | Trail layout, terrain height, wooden features, trees and rocks. Pure math, no rendering |
+| `src/course.js` | Trail layout, terrain height, wooden features, trees, rocks and city buildings. Pure math, no rendering |
 | `src/physics.js` | Bike movement, jumps, landings, crashes |
 | `src/score.js` | Trick values, combos, medals |
 | `src/world.js` | The visible mountain: ground, forest, wood, water, signs, sky |
 | `src/pbr.js` | Shared material and texture loader |
-| `docs/tex/` | Ground, rock, bark, plank and foliage textures, cut from CC0 scans by [Poly Haven](https://polyhaven.com) |
+| `docs/tex/` | Ground, rock, bark, plank, street, wall and foliage textures, cut from CC0 scans by [Poly Haven](https://polyhaven.com) |
 | `src/bikes.js` | The bikes in the shop: price, stats, look |
 | `src/bike.js` | Rider and bike model with trick poses |
 | `src/camera.js` | Chase camera |

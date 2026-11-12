@@ -24,7 +24,19 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const fmt = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
 const hex = n => '#' + n.toString(16).padStart(6, '0');
 
-initCourse();
+// The world is fixed for the life of the page: changing it reloads.
+const WORLDS = ['mountain', 'city'];
+let worldId = QS.get('world');
+if (!WORLDS.includes(worldId)) { try { worldId = localStorage.getItem('dr_world'); } catch {} }
+if (!WORLDS.includes(worldId)) worldId = 'mountain';
+try { localStorage.setItem('dr_world', worldId); } catch {}
+function setWorld(w, room) {
+  try { localStorage.setItem('dr_world', w); } catch {}
+  const q = new URLSearchParams(location.search); q.set('world', w);
+  if (room) { q.set('room', room); q.set('go', '1'); } else { q.delete('room'); q.delete('go'); }
+  location.search = '?' + q;
+}
+initCourse(worldId);
 const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality ? 2 : 1.5));
 renderer.shadowMap.enabled = quality > 0; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -75,7 +87,7 @@ function dropRemote(id) {
   scene.remove(R.model.root, R.model.blob, R.label); remotes.delete(id);
 }
 function onNet(m) {
-  if (m.t === 'join') { addRemote(m); net.send({ t: 'bike', to: m.id, b: bikeIdx() }); if (net.host) net.send({ t: 'sync', to: m.id, same: G.same, racing: G.state === 'count' || G.state === 'race' || G.state === 'done' }); if (G.result) net.send({ t: 'fin', to: m.id, ...G.result }); }
+  if (m.t === 'join') { addRemote(m); net.send({ t: 'bike', to: m.id, b: bikeIdx() }); if (net.host) net.send({ t: 'sync', to: m.id, same: G.same, world: worldId, racing: G.state === 'count' || G.state === 'race' || G.state === 'done' }); if (G.result) net.send({ t: 'fin', to: m.id, ...G.result }); }
   else if (m.t === 'leave') dropRemote(m.id);
   else if (m.t === 'closed') { leave(); $('err').textContent = 'Connection lost. Join again.'; }
   else if (m.t === 's') {
@@ -83,7 +95,10 @@ function onNet(m) {
     R.a = R.b; R.b = { t: performance.now() / 1000, d: m.d }; R.prog = m.d[11]; R.score = m.d[12];
   }
   else if (m.t === 'go') { if (G.state === 'gate') startCountdown(); }
-  else if (m.t === 'sync') { G.same = !!m.same; applyBike(); if (m.racing && G.state === 'gate') startCountdown(); }
+  else if (m.t === 'sync') {
+    if (WORLDS.includes(m.world) && m.world !== worldId) { const room = net.room; net.close(); setWorld(m.world, room); return; }
+    G.same = !!m.same; applyBike(); if (m.racing && G.state === 'gate') startCountdown();
+  }
   else if (m.t === 'same') { G.same = !!m.v; applyBike(); }
   else if (m.t === 'bike') {
     const R = remotes.get(m.f), b = Math.floor(m.b) || 0;
@@ -240,7 +255,7 @@ const hudC = {};
 const setText = (id, v) => { if (hudC[id] !== v) { hudC[id] = v; $(id).textContent = v; } };
 function updateHud(dt) {
   const r = me.r, kmh = Math.round(r.speed * 3.6);
-  setText('kmh', kmh); setText('clock', fmt(G.time)); setText('pts', me.score.total.toLocaleString('en-US'));
+  setText('kmh', kmh); setText('clock', fmt(G.time)); setText('pts', me.score.total.toLocaleString('en-US')); setText('wal', shop.coins.toLocaleString('en-US'));
   const arc = Math.round(clamp(kmh / 85, 0, 1) * 283);
   if (hudC.arc !== arc) { hudC.arc = arc; $('arc').setAttribute('stroke-dasharray', `${arc} 400`); $('arc').setAttribute('stroke', kmh > 62 ? '#ff7a3a' : '#35d9f0'); }
   $('lines').style.opacity = G.paused ? 0 : clamp((kmh - 48) / 40, 0, 0.55);
@@ -329,12 +344,12 @@ function effects(dt) {
   if (r.ground && !r.crashed && r.speed > 4 && r.surf !== 2) {
     const n = (r.speed / 22 + r.slide * 0.5 + r.braking * 0.8) * dt * 30 * (r.surf === 0 ? 0.3 : 1);
     if (Math.random() < n) {
-      const bx = r.x - Math.sin(r.yaw) * 0.6, bz = r.z + Math.cos(r.yaw) * 0.6, c = r.surf === 0 ? [0.5, 0.62, 0.38] : [0.8, 0.62, 0.42];
-      fx.emit(bx, r.y + 0.1, bz, (Math.random() - 0.5) * 1.5, 0.6 + Math.random(), (Math.random() - 0.5) * 1.5, 0.7 + Math.random() * 0.5, 0.35 + r.slide * 0.1, 3, c[0], c[1], c[2], 0.42, -0.4, 2);
+      const bx = r.x - Math.sin(r.yaw) * 0.6, bz = r.z + Math.cos(r.yaw) * 0.6, c = worldId === 'city' ? [0.5, 0.5, 0.5] : r.surf === 0 ? [0.42, 0.48, 0.34] : [0.5, 0.44, 0.36];
+      fx.emit(bx, r.y + 0.1, bz, (Math.random() - 0.5) * 1.5, 0.6 + Math.random(), (Math.random() - 0.5) * 1.5, 0.7 + Math.random() * 0.5, 0.35 + r.slide * 0.1, 3, c[0], c[1], c[2], worldId === 'city' ? 0.12 : 0.25, -0.4, 2);
     }
   }
   // Drifting leaves in the forest and mist at the waterfalls.
-  if (Math.random() < dt * 5) {
+  if (worldId !== 'city' && Math.random() < dt * 5) {
     const a = cam.yaw + (Math.random() - 0.5) * 1.6, d = 8 + Math.random() * 25, x = camera.position.x + Math.sin(a) * d, z = camera.position.z - Math.cos(a) * d;
     const c = Math.random() < 0.5 ? [0.95, 0.8, 0.25] : [0.55, 0.85, 0.3];
     fx.emit(x, camera.position.y + 2 + Math.random() * 5, z, (Math.random() - 0.5) * 2, -0.8, (Math.random() - 0.5) * 2, 4, 0.13, 0, c[0], c[1], c[2], 0.9, 0.15, 0.3);
@@ -397,7 +412,7 @@ function buyOrRide() {
 
 let last = performance.now();
 function frame(now) {
-  requestAnimationFrame(frame);
+requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   tick(dt, now);
 }
@@ -470,14 +485,14 @@ async function join(room) {
     await net.connect(room, me.name);
     for (const p of net.peers.values()) addRemote(p);
     me.col = net.col; setMyModel(); net.send({ t: 'bike', b: bikeIdx() });
-    history.replaceState(null, '', '?room=' + room);
+    history.replaceState(null, '', '?room=' + room + '&world=' + worldId);
     toGate();
   } catch (e) {
     $('err').textContent = e === 'full' ? 'Room is full. Try another room.' : 'Could not connect. Check the connection and try again.';
   }
   joining = false;
 }
-const link = () => location.origin + location.pathname + '?room=' + net.room;
+const link = () => location.origin + location.pathname + '?room=' + net.room + '&world=' + worldId;
 function copyLink(btn) {
   const done = () => { const t = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => btn.textContent = t, 1200); };
   if (navigator.clipboard) navigator.clipboard.writeText(link()).then(done, () => prompt('Link', link())); else prompt('Link', link());
@@ -494,6 +509,7 @@ $('shopb').onclick = openShop; $('sback').onclick = closeShop; $('sbuy').onclick
 $('sprev').onclick = () => showBike(show.i - 1); $('snext').onclick = () => showBike(show.i + 1);
 $('rshop').onclick = () => { leave(); openShop(); };
 addEventListener('keydown', e => { if (G.state !== 'shop') return; if (e.key === 'ArrowLeft') showBike(show.i - 1); else if (e.key === 'ArrowRight') showBike(show.i + 1); else if (e.key === 'Escape') closeShop(); });
+for (const w of WORLDS) { const b = $('w' + w); if (w === worldId) b.classList.remove('b3'); b.onclick = () => { if (w !== worldId) setWorld(w); }; }
 $('resume').onclick = togglePause;
 $('prestart').onclick = () => { togglePause(); toGate(); };
 $('pmute').onclick = toggleMute;
@@ -511,4 +527,5 @@ addEventListener('resize', resize); resize();
 me.model = new BikeModel(0, bikeIdx()); scene.add(me.model.root, me.model.blob);
 placeOn(me.r, 0, course.start.s, 0, 4); cam.snap(me.r);
 if (QS.has('debug')) window.__dr = { G, me, shop, net, remotes, cam, course, trails, placeOn, input, inp, toGate, scene, renderer, camera, run(sec, dt = 1 / 60) { for (let t = 0; t < sec; t += dt) tick(dt, performance.now()); } };
+if (preRoom && QS.has('go')) join(preRoom);
 requestAnimationFrame(frame);
